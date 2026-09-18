@@ -1,33 +1,24 @@
 namespace ReestrParse.Infrastructure.Selenium.Eias;
 
 /// <summary>
-/// Единственная точка, которую надо адаптировать, если ЕИАС меняет DOM.
-/// Селекторы расположены от наиболее точных к более общим.
+/// Точные DOM-ориентиры основной страницы ФГИС ЕИАС.
+/// Bootstrap Select скрывает настоящий select, поэтому для региона
+/// мы обращаемся непосредственно к #region-select, а не к визуальному dropdown.
 /// </summary>
 internal static class EiasDomHints
 {
-    public static readonly string[] RegionSelectCss =
-    [
-        "select[id*='Region' i]",
-        "select[name*='Region' i]",
-        "select[id*='reg' i]",
-        "select[name*='reg' i]"
-    ];
+    public const string RegionSelectId = "region-select";
+    public const string RegionSelectCss = "#region-select";
+    public const string RegionOptionCss = "#region-select option";
+    public const string GoButtonId = "go-btn";
 
+    // Сферу уточним по фактической разметке следующего экрана.
+    // Пока оставляем fallback-набор, чтобы не связывать UI с DOM сайта.
     public static readonly string[] SphereSelectCss =
     [
         "select[id*='Sphere' i]",
         "select[name*='Sphere' i]",
         "select[id*='sfer' i]",
         "select[name*='sfer' i]"
-    ];
-
-    public static readonly string[] SearchButtonTexts =
-    [
-        "Показать",
-        "Найти",
-        "Выбрать",
-        "Применить",
-        "Перейти"
     ];
 }

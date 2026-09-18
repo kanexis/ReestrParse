@@ -23,7 +23,16 @@ internal sealed class EiasCatalogService(SeleniumBrowserSession browser) : IEias
             driver.Navigate().GoToUrl(EiasUrls.Map);
             WaitForDocument(driver, wait);
 
-            var select = driver.FindBestSelect(EiasDomHints.RegionSelectCss, "reg");
+            wait.Until(d =>
+                d.FindElements(By.CssSelector(EiasDomHints.RegionOptionCss)).Count > 1);
+
+            // В реальной разметке ЕИАС это скрытый Bootstrap Select:
+            // <select id="region-select" style="display: none;">...</select>
+            // Для чтения option видимость select не требуется.
+            var select = driver.FindRequired(
+                By.Id(EiasDomHints.RegionSelectId),
+                "список регионов");
+
             var options = new SelectElement(select).Options
                 .Select(o => new RegionOption(
                     (o.GetAttribute("value") ?? string.Empty).Trim(),
@@ -51,19 +60,41 @@ internal sealed class EiasCatalogService(SeleniumBrowserSession browser) : IEias
 
             progress?.Report(new("Выбор региона", 0, 0, region.Name));
 
-            var regionSelectElement = driver.FindBestSelect(EiasDomHints.RegionSelectCss, "reg");
-            var regionSelect = new SelectElement(regionSelectElement);
-            regionSelect.SelectByValue(region.ExternalId);
-            driver.DispatchChange(regionSelectElement);
+            wait.Until(d =>
+                d.FindElements(By.CssSelector(EiasDomHints.RegionOptionCss)).Count > 1);
 
-            // Даём динамической части страницы отреагировать.
+            var regionSelectElement = driver.FindRequired(
+                By.Id(EiasDomHints.RegionSelectId),
+                "список регионов");
+
+            var hasRegion = new SelectElement(regionSelectElement).Options.Any(o =>
+                string.Equals(
+                    o.GetAttribute("value"),
+                    region.ExternalId,
+                    StringComparison.Ordinal));
+
+            if (!hasRegion)
+            {
+                throw new NoSuchElementException(
+                    $"Регион '{region.Name}' с id={region.ExternalId} отсутствует в #region-select.");
+            }
+
+            driver.SetBootstrapSelectValue(regionSelectElement, region.ExternalId);
+
+            var goButton = wait.Until(d =>
+            {
+                var buttons = d.FindElements(By.Id(EiasDomHints.GoButtonId));
+                return buttons.FirstOrDefault(x => x.Displayed && x.Enabled);
+            });
+
+            goButton.Click();
+
+            // После кнопки ВЫБРАТЬ страница/динамический блок должны перейти к региону.
+            // Дальше уже исследуем фактический DOM сферы теплоснабжения.
+            WaitForDocument(driver, wait);
             Thread.Sleep(500);
 
             TrySelectHeatSupply(driver, sphere);
-            driver.ClickButtonByText(EiasDomHints.SearchButtonTexts);
-
-            WaitForDocument(driver, wait);
-            Thread.Sleep(700);
 
             var collected = new Dictionary<string, OrganizationReference>(StringComparer.OrdinalIgnoreCase);
             var page = 1;
@@ -140,8 +171,9 @@ internal sealed class EiasCatalogService(SeleniumBrowserSession browser) : IEias
         if (option is null)
             return;
 
-        option.Click();
-        driver.DispatchChange(sphereElement);
+        driver.SetBootstrapSelectValue(
+            sphereElement,
+            option.GetAttribute("value") ?? string.Empty);
     }
 
     private static IEnumerable<OrganizationReference> ExtractOrganizations(

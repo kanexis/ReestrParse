@@ -1,4 +1,5 @@
 using ReestrParse.Domain.Catalog;
+using Xunit;
 
 namespace ReestrParse.Application.Tests;
 

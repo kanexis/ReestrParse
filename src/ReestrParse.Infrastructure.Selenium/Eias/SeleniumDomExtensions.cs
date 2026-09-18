@@ -1,29 +1,36 @@
 using OpenQA.Selenium;
-using OpenQA.Selenium.Support.UI;
 
 namespace ReestrParse.Infrastructure.Selenium.Eias;
 
 internal static class SeleniumDomExtensions
 {
-    public static IWebElement? FindFirstDisplayed(this IWebDriver driver, IEnumerable<string> cssSelectors)
+     ///<summary>
+     /// Ищет элемент независимо от Displayed.Это важно для Bootstrap Select:
+     /// настоящий select присутствует в DOM, но скрыт через display:none.
+     ///</summary>
+    public static IWebElement FindRequired(this IWebDriver driver, By by, string description)
     {
-        foreach (var css in cssSelectors)
-        {
-            var element = driver.FindElements(By.CssSelector(css)).FirstOrDefault(x => x.Displayed);
-            if (element is not null)
-                return element;
-        }
+        var element = driver.FindElements(by).FirstOrDefault();
 
-        return null;
+        return element ?? throw new NoSuchElementException(
+            $"Не найден элемент '{description}' ({by}).");
     }
 
-    public static IWebElement FindBestSelect(this IWebDriver driver, IEnumerable<string> cssSelectors, string semanticText)
+    public static IWebElement FindBestSelect(
+        this IWebDriver driver,
+        IEnumerable<string> cssSelectors,
+        string semanticText)
     {
-        var exact = driver.FindFirstDisplayed(cssSelectors);
-        if (exact is not null)
-            return exact;
+        // Сначала ищем точные CSS-селекторы БЕЗ проверки Displayed.
+        // Bootstrap Select специально скрывает исходные <select>.
+        foreach (var css in cssSelectors)
+        {
+            var exact = driver.FindElements(By.CssSelector(css)).FirstOrDefault();
+            if (exact is not null)
+                return exact;
+        }
 
-        var selects = driver.FindElements(By.TagName("select")).Where(x => x.Displayed).ToList();
+        var selects = driver.FindElements(By.TagName("select")).ToList();
 
         if (selects.Count == 1)
             return selects[0];
@@ -43,31 +50,38 @@ internal static class SeleniumDomExtensions
         throw new NoSuchElementException($"Не найден выпадающий список '{semanticText}'.");
     }
 
-    public static void DispatchChange(this IWebDriver driver, IWebElement element)
+    /// <summary>
+    /// Выставляет значение скрытого Bootstrap Select и синхронизирует визуальный selectpicker.
+    /// Обычный Selenium Click по option здесь ненадёжен, потому что исходный select скрыт.
+    /// </summary>
+    public static void SetBootstrapSelectValue(
+        this IWebDriver driver,
+        IWebElement select,
+        string value)
     {
-        ((IJavaScriptExecutor)driver).ExecuteScript(
-            "arguments[0].dispatchEvent(new Event('change', { bubbles: true }));", element);
-    }
+        var js = (IJavaScriptExecutor)driver;
 
-    public static bool ClickButtonByText(this IWebDriver driver, IEnumerable<string> texts)
-    {
-        var candidates = driver.FindElements(By.CssSelector("button, input[type='button'], input[type='submit'], a"));
+        js.ExecuteScript(
+            """
+            const select = arguments[0];
+            const value = arguments[1];
 
-        foreach (var text in texts)
-        {
-            var element = candidates.FirstOrDefault(x =>
-            {
-                var caption = (x.Text + " " + x.GetAttribute("value") + " " + x.GetAttribute("title")).Trim();
-                return x.Displayed && caption.Contains(text, StringComparison.OrdinalIgnoreCase);
-            });
+            select.value = value;
 
-            if (element is not null)
-            {
-                element.Click();
-                return true;
+            if (window.jQuery) {
+                const $select = window.jQuery(select);
+
+                if (typeof $select.selectpicker === 'function') {
+                    $select.selectpicker('val', value);
+                    $select.selectpicker('refresh');
+                }
+
+                $select.trigger('change');
+            } else {
+                select.dispatchEvent(new Event('change', { bubbles: true }));
             }
-        }
-
-        return false;
+            """,
+            select,
+            value);
     }
 }

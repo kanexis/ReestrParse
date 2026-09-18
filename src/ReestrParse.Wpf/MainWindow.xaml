@@ -172,10 +172,10 @@
             <StackPanel>
               <TextBlock Text="Найденные организации" FontSize="17" FontWeight="SemiBold" />
               <TextBlock Foreground="{StaticResource MutedBrush}"
-                     FontSize="12">
-                        <Run Text="Всего: " />
-                        <Run Text="{Binding Organizations.Count, Mode=OneWay}"
-                    FontWeight="SemiBold" />
+                       FontSize="12">
+                <Run Text="Всего: " />
+                <Run Text="{Binding Organizations.Count, Mode=OneWay}"
+                     FontWeight="SemiBold" />
               </TextBlock>
             </StackPanel>
 
