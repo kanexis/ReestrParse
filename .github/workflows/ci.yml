@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet restore ReestrParse.slnx
+      - run: dotnet build ReestrParse.slnx --configuration Release --no-restore
+      - run: dotnet test ReestrParse.slnx --configuration Release --no-build

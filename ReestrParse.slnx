@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ReestrParse.Domain/ReestrParse.Domain.csproj" />
+    <Project Path="src/ReestrParse.Application/ReestrParse.Application.csproj" />
+    <Project Path="src/ReestrParse.Infrastructure.Selenium/ReestrParse.Infrastructure.Selenium.csproj" />
+    <Project Path="src/ReestrParse.Wpf/ReestrParse.Wpf.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ReestrParse.Application.Tests/ReestrParse.Application.Tests.csproj" />
+  </Folder>
+</Solution>

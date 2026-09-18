@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\ReestrParse.Application\ReestrParse.Application.csproj" />
+    <ProjectReference Include="..\ReestrParse.Domain\ReestrParse.Domain.csproj" />
+    <ProjectReference Include="..\ReestrParse.Infrastructure.Selenium\ReestrParse.Infrastructure.Selenium.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+</Project>
