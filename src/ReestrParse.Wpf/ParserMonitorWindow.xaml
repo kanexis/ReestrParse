@@ -209,8 +209,8 @@
             <DataGridTextColumn Header="Этап" Binding="{Binding Stage}" Width="150" />
             <DataGridTextColumn Header="Операция" Binding="{Binding Operation}" Width="175" />
             <DataGridTextColumn Header="W" Binding="{Binding Worker}" Width="55" />
-            <DataGridTextColumn Header="Стр." Binding="{Binding Page}" Width="60" />
-            <DataGridTextColumn Header="Единица" Binding="{Binding Position}" Width="85" />
+            <DataGridTextColumn Header="Позиция" Binding="{Binding Position}" Width="85" />
+
             <DataGridTextColumn Header="Время" Binding="{Binding Duration}" Width="85" />
             <DataGridTextColumn Header="Организация" Binding="{Binding Organization}" Width="260" />
             <DataGridTextColumn Header="ИНН" Binding="{Binding Inn}" Width="115" />

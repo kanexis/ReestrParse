@@ -21,8 +21,8 @@ public partial class MainWindow : System.Windows.Window
     {
         if (_monitorWindow.IsVisible)
         {
-            if (_monitorWindow.WindowState == WindowState.Minimized)
-                _monitorWindow.WindowState = WindowState.Normal;
+            if (_monitorWindow.WindowState == System.Windows.WindowState.Minimized)
+                _monitorWindow.WindowState = System.Windows.WindowState.Normal;
 
             _monitorWindow.Activate();
             return;

@@ -32,7 +32,6 @@ WPF-приложение для сбора реестра организаций
 - `concurrency`
 - `multithreading`
 - `async-await`
-
 ## Current stack
 
 - .NET 10
@@ -66,7 +65,6 @@ WPF-приложение для сбора реестра организаций
 - Per-step details timings: catalog fallback, organization card, 4.1.1 link extraction, TemplatePrinter load, HTML parse.
 - Active workers, completed/total, success/error counters, average item time, throughput and ETA.
 - Runtime-log filtering and CSV/TXT export.
-
 ## Portfolio documentation
 
 В корне репозитория находится [`ARCHITECTURE.md`](../ARCHITECTURE.md) — отдельный русскоязычный технический разбор с Mermaid-диаграммами и объяснением решений, который можно использовать при code review и на собеседованиях.

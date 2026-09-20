@@ -16,7 +16,7 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
     private readonly IParserTelemetry _telemetry;
     private readonly Stopwatch _sessionStopwatch = new();
     private readonly List<TimeSpan> _itemDurations = [];
-    private readonly DispatcherTimer _uiTimer;
+    private readonly DispatcherTimer _uiTimer; 
     private bool _disposed;
 
     public ObservableCollection<ParserLogEntryViewModel> Logs { get; } = [];

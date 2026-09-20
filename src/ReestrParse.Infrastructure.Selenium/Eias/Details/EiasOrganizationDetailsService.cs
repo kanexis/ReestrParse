@@ -380,8 +380,8 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
         telemetry.Success(
             ParserPipelineStage.DetailsForm411,
             "4.1.1 parsed",
-            $"Форма распарсена: телефонов организации {details.OrganizationPhones.Count}; email: " +
-            $"{(string.IsNullOrWhiteSpace(details.OrganizationEmail) ? "нет" : "есть")}.",
+            $"Форма распарсена: телефонов организации {details.Phones.Count}; email: " +
+            $"{(string.IsNullOrWhiteSpace(details.Email) ? "нет" : "есть")}.",
             parseSw.Elapsed,
             workerId,
             page: organization.SourcePage,
