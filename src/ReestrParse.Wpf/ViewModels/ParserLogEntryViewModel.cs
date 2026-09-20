@@ -31,13 +31,18 @@ public sealed class ParserLogEntryViewModel
         ParserPipelineStage.CatalogCompleted => "Каталог готов",
         ParserPipelineStage.DetailsQueue => "Workers / очередь",
         ParserPipelineStage.DetailsNavigation => "Карточка организации",
+        ParserPipelineStage.DetailsFormDiscovery => "Поиск опубликованных форм",
+        ParserPipelineStage.DetailsTemplate => "TemplatePrinter",
         ParserPipelineStage.DetailsForm411 => "Форма 4.1.1",
-        ParserPipelineStage.DetailsCompleted => "Контакты готовы",
+        ParserPipelineStage.DetailsForm101 => "Форма 1.0.1",
+        ParserPipelineStage.DetailsDataQuality => "Проверка данных",
+        ParserPipelineStage.DetailsCompleted => "Данные готовы",
         ParserPipelineStage.Completed => "Pipeline завершён",
         ParserPipelineStage.Cancelled => "Отменено",
         ParserPipelineStage.Failed => "Ошибка",
         _ => Source.Stage.ToString()
     };
+
     public string Operation => Source.Operation;
     public string Worker => Source.WorkerId is > 0 ? $"W{Source.WorkerId}" : "—";
     public string Page => Source.Page.HasValue ? Source.Page.Value.ToString() : "—";
@@ -66,6 +71,8 @@ public sealed class ParserLogEntryViewModel
 
     public string Organization => Source.OrganizationName ?? string.Empty;
     public string Inn => Source.Inn ?? string.Empty;
+    public string Code => Source.Code ?? string.Empty;
+    public string DataSource => Source.DataSource ?? string.Empty;
     public string Message => Source.Message;
     public string Error => Source.Error ?? string.Empty;
 }

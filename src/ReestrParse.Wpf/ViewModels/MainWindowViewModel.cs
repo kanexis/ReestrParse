@@ -130,17 +130,28 @@ public partial class MainWindowViewModel : ObservableObject
 
             case ParserPipelineStage.DetailsQueue:
             case ParserPipelineStage.DetailsNavigation:
+            case ParserPipelineStage.DetailsFormDiscovery:
+            case ParserPipelineStage.DetailsTemplate:
             case ParserPipelineStage.DetailsForm411:
+            case ParserPipelineStage.DetailsForm101:
+            case ParserPipelineStage.DetailsDataQuality:
                 CurrentPipelineStep = 3;
                 ContactsStepStatus = evt.Message;
                 CurrentStage = StageCaption(evt.Stage);
                 break;
 
             case ParserPipelineStage.DetailsCompleted:
-            case ParserPipelineStage.Completed:
                 CurrentPipelineStep = 3;
                 ContactsStepStatus = evt.Message;
-                CurrentStage = "Контакты готовы";
+                ExportStepStatus = "Подготовка результата";
+                CurrentStage = "Данные форм готовы";
+                break;
+
+            case ParserPipelineStage.Completed:
+                CurrentPipelineStep = 4;
+                ContactsStepStatus = evt.Message;
+                ExportStepStatus = "Результат готов";
+                CurrentStage = "Pipeline завершён";
                 break;
 
             case ParserPipelineStage.Cancelled:
@@ -153,7 +164,15 @@ public partial class MainWindowViewModel : ObservableObject
         }
 
         if (evt.TotalItems is > 0 && evt.ItemIndex.HasValue &&
-            evt.Stage is ParserPipelineStage.DetailsQueue or ParserPipelineStage.DetailsNavigation or ParserPipelineStage.DetailsForm411 or ParserPipelineStage.DetailsCompleted or ParserPipelineStage.Completed)
+            evt.Stage is ParserPipelineStage.DetailsQueue or
+                         ParserPipelineStage.DetailsNavigation or
+                         ParserPipelineStage.DetailsFormDiscovery or
+                         ParserPipelineStage.DetailsTemplate or
+                         ParserPipelineStage.DetailsForm411 or
+                         ParserPipelineStage.DetailsForm101 or
+                         ParserPipelineStage.DetailsDataQuality or
+                         ParserPipelineStage.DetailsCompleted or
+                         ParserPipelineStage.Completed)
         {
             OverallProgressPercent = Math.Clamp(evt.ItemIndex.Value * 100d / evt.TotalItems.Value, 0d, 100d);
             OverallProgressText = $"Контакты: {evt.ItemIndex.Value}/{evt.TotalItems.Value}";
@@ -175,7 +194,11 @@ public partial class MainWindowViewModel : ObservableObject
         ParserPipelineStage.CatalogPages => "Чтение страниц каталога",
         ParserPipelineStage.DetailsQueue => "Очередь workers",
         ParserPipelineStage.DetailsNavigation => "Карточка организации",
+        ParserPipelineStage.DetailsFormDiscovery => "Поиск опубликованных форм",
+        ParserPipelineStage.DetailsTemplate => "TemplatePrinter",
         ParserPipelineStage.DetailsForm411 => "Форма 4.1.1",
+        ParserPipelineStage.DetailsForm101 => "Форма 1.0.1",
+        ParserPipelineStage.DetailsDataQuality => "Проверка данных",
         _ => stage.ToString()
     };
 
@@ -198,6 +221,12 @@ public partial class MainWindowViewModel : ObservableObject
                org.Phones.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
                org.Email.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
                org.ResponsiblePerson.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+               org.ResponsibleEmail.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+               org.Manager.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+               org.ParsedForms.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+               org.InfrastructureSystems.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+               org.RegulatedActivities.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+               org.ServiceTerritory.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
                org.OrganizationId.Contains(SearchText, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -214,6 +243,7 @@ public partial class MainWindowViewModel : ObservableObject
             RegionStepStatus = "Загрузка регионов...";
             CatalogStepStatus = "Ожидание";
             ContactsStepStatus = "Ожидание";
+            ExportStepStatus = "Ожидание данных";
             OverallProgressPercent = 0;
             OverallProgressText = "Загрузка регионов";
             StatusText = "Загрузка";
@@ -270,6 +300,7 @@ public partial class MainWindowViewModel : ObservableObject
             RegionStepStatus = $"Готово · {SelectedRegion.Name}";
             CatalogStepStatus = "Подготовка...";
             ContactsStepStatus = "Ожидание каталога";
+            ExportStepStatus = "Ожидание данных";
             OverallProgressPercent = 0;
             OverallProgressText = "Подготовка каталога";
             StatusText = "Сбор";
@@ -360,7 +391,7 @@ public partial class MainWindowViewModel : ObservableObject
             OverallProgressPercent = 0;
             OverallProgressText = $"Контакты: 0/{Organizations.Count}";
             StatusText = "Контакты";
-            CurrentStage = "Форма 4.1.1";
+            CurrentStage = "Карточки и формы";
 
             foreach (var row in Organizations)
                 row.MarkQueued();
@@ -375,16 +406,16 @@ public partial class MainWindowViewModel : ObservableObject
                     row.Apply(p);
 
                 CurrentStage = $"Контакты {p.Completed}/{p.Total}";
-                ContactsStepStatus = $"Обработано {p.Completed}/{p.Total} · OK {p.Succeeded} · ERR {p.Failed}";
+                ContactsStepStatus = $"Обработано {p.Completed}/{p.Total} · OK {p.Succeeded} · PART {p.Partial} · ERR {p.Failed}";
                 OverallProgressPercent = p.Total > 0
                     ? Math.Clamp(p.Completed * 100d / p.Total, 0d, 100d)
                     : 0;
                 OverallProgressText =
-                    $"Контакты: {p.Completed}/{p.Total} · worker {p.WorkerId}" +
+                    $"Данные: {p.Completed}/{p.Total} · worker {p.WorkerId}" +
                     (p.Duration.HasValue ? $" · {p.Duration.Value.TotalSeconds:F1} с" : string.Empty);
 
                 ProgressMessage =
-                    $"{p.Message}. Успешно: {p.Succeeded}, ошибок: {p.Failed}.";
+                    $"{p.Message}. Полностью: {p.Succeeded}, частично: {p.Partial}, ошибок: {p.Failed}.";
 
                 FilteredOrganizations.Refresh();
             });
@@ -396,17 +427,18 @@ public partial class MainWindowViewModel : ObservableObject
                 _cts!.Token);
 
             totalSw.Stop();
-            var succeeded = results.Count(x => x.IsSuccess);
-            var failed = results.Count - succeeded;
+            var succeeded = results.Count(x => x.IsFull);
+            var partial = results.Count(x => x.IsPartial);
+            var failed = results.Count(x => !x.IsSuccess);
 
             StatusText = failed == 0 ? "Готов" : "Готово с ошибками";
-            CurrentStage = "Контакты собраны";
-            ContactsStepStatus = $"Готово · {succeeded}/{results.Count} · ошибок {failed}";
+            CurrentStage = "Данные форм собраны";
+            ContactsStepStatus = $"Готово · {succeeded} полн. · {partial} част. · {failed} ошибок";
             OverallProgressPercent = 100;
             OverallProgressText = $"Контакты обработаны за {totalSw.Elapsed:hh\\:mm\\:ss}";
             ProgressMessage =
-                $"Форма 4.1.1 обработана для {succeeded}/{results.Count} организаций. " +
-                $"Ошибок: {failed}. Workers: {Math.Clamp(SelectedParallelism, 1, 6)}.";
+                $"Организации обработаны: полностью {succeeded}, частично {partial}, ошибок {failed}. " +
+                $"Workers: {Math.Clamp(SelectedParallelism, 1, 6)}.";
 
             _telemetry.Success(
                 ParserPipelineStage.Completed,
@@ -416,7 +448,8 @@ public partial class MainWindowViewModel : ObservableObject
                 totalItems: results.Count,
                 itemIndex: results.Count,
                 succeeded: succeeded,
-                failed: failed);
+                failed: failed,
+                partial: partial);
         }
         catch (OperationCanceledException)
         {

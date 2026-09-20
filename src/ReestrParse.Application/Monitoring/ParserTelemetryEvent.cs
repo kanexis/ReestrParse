@@ -14,9 +14,12 @@ public sealed record ParserTelemetryEvent(
     int? TotalItems = null,
     int? Succeeded = null,
     int? Failed = null,
+    int? Partial = null,
     string? OrganizationName = null,
     string? Inn = null,
-    string? Error = null)
+    string? Error = null,
+    string? Code = null,
+    string? DataSource = null)
 {
     public double? ProgressPercent =>
         ItemIndex.HasValue && TotalItems > 0

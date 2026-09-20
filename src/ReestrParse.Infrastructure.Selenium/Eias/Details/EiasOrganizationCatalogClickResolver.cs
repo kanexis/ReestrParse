@@ -1,27 +1,34 @@
+using System.Text.Json;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Interactions;
 using OpenQA.Selenium.Support.UI;
+using ReestrParse.Application.Monitoring;
 using ReestrParse.Domain.Organizations;
 using ReestrParse.Infrastructure.Selenium.Browser;
 
 namespace ReestrParse.Infrastructure.Selenium.Eias.Details;
 
 /// <summary>
-/// Fallback для тех строк каталога, где DevExpress не отдаёт orgId/прямой DetailUrl.
-/// Использует проверенный алгоритм старой версии ReestrParse: находит организацию по
-/// Название + ИНН + КПП и кликает первую ячейку строки.
-///
-/// Важно: resolver работает внутри отдельного Selenium worker, а не в основной
-/// browser-session каталога WPF. Поэтому переход в карточку не сбрасывает пагинацию
-/// основного списка организаций.
+/// Fallback для строк каталога без orgId/DetailUrl.
+/// SourcePage используется как подсказка, а не как жёсткое условие: если порядок
+/// DevExpress отличается в новой worker-session, resolver адаптивно проверяет другие
+/// страницы и ищет строку по Name+INN+KPP, затем INN+KPP, затем уникальному INN.
 /// </summary>
 internal static class EiasOrganizationCatalogClickResolver
 {
     private const string OrganizationPageMarker = "/Discl/PublicDisclosureInfoOrg.aspx";
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     public static string ResolveAndOpen(
         SeleniumWorkerBrowser browser,
         OrganizationReference organization,
+        IParserTelemetry telemetry,
+        int workerId,
+        int itemIndex,
+        int totalItems,
         CancellationToken cancellationToken)
     {
         var catalogUrl = EiasCatalogUrlBuilder.Build(organization)
@@ -32,29 +39,72 @@ internal static class EiasOrganizationCatalogClickResolver
         browser.Driver.Navigate().GoToUrl(catalogUrl);
         WaitForCatalog(browser, cancellationToken);
 
-        var targetPage = Math.Max(1, organization.SourcePage);
-        if (targetPage > 1)
+        var pager = EiasLivePager.Read(browser.Driver);
+        var pageOrder = BuildPageOrder(
+            Math.Clamp(organization.SourcePage, 1, Math.Max(1, pager.TotalPages)),
+            Math.Max(1, pager.TotalPages));
+
+        var scannedPages = new List<int>();
+        MatchResult? match = null;
+        int resolvedPage = 0;
+
+        foreach (var page in pageOrder)
         {
-            EiasPagerNavigator.GoToPage(
-                browser.Driver,
-                targetPage,
+            cancellationToken.ThrowIfCancellationRequested();
+            scannedPages.Add(page);
+
+            var current = EiasLivePager.Read(browser.Driver).CurrentPage;
+            if (current != page)
+            {
+                EiasPagerNavigator.GoToPage(
+                    browser.Driver,
+                    page,
+                    cancellationToken);
+            }
+
+            WaitForCatalog(browser, cancellationToken);
+
+            var scanSw = System.Diagnostics.Stopwatch.StartNew();
+            match = WaitForMatchingRow(
+                browser,
+                organization,
+                TimeSpan.FromSeconds(6),
                 cancellationToken);
+            scanSw.Stop();
+
+            telemetry.Info(
+                ParserPipelineStage.DetailsNavigation,
+                "Catalog fallback page scanned",
+                match is null
+                    ? $"Worker #{workerId}: строка не найдена на странице {page}; продолжаем поиск."
+                    : $"Worker #{workerId}: строка найдена на странице {page} по стратегии {match.Strategy}.",
+                scanSw.Elapsed,
+                workerId,
+                page: page,
+                itemIndex: itemIndex,
+                totalItems: totalItems,
+                organizationName: organization.Name,
+                inn: organization.Inn,
+                code: match is null ? "CATALOG_ROW_NOT_ON_PAGE" : "CATALOG_ROW_MATCHED",
+                dataSource: "catalog");
+
+            if (match is not null)
+            {
+                resolvedPage = page;
+                break;
+            }
         }
 
-        WaitForCatalog(browser, cancellationToken);
-
-        var beforeUrl = browser.Driver.Url;
-        var clicked = ClickOrganizationCell(
-            browser,
-            organization,
-            cancellationToken);
-
-        if (!clicked)
+        if (match is null)
         {
             throw new NoSuchElementException(
-                $"На странице {targetPage} не найдена строка организации " +
-                $"«{organization.Name}» (ИНН {organization.Inn}, КПП {organization.Kpp}).");
+                $"Не найдена строка организации «{organization.Name}» " +
+                $"(ИНН {organization.Inn}, КПП {organization.Kpp}). " +
+                $"Проверены страницы: {string.Join(", ", scannedPages)}.");
         }
+
+        var beforeUrl = browser.Driver.Url;
+        ClickMatchedRow(browser, match.RowId, cancellationToken);
 
         var navigationWait = new WebDriverWait(browser.Driver, TimeSpan.FromSeconds(45))
         {
@@ -83,7 +133,7 @@ internal static class EiasOrganizationCatalogClickResolver
         catch (WebDriverTimeoutException ex)
         {
             throw new WebDriverTimeoutException(
-                $"Строка организации «{organization.Name}» была нажата на странице {targetPage}, " +
+                $"Строка организации «{organization.Name}» была нажата на странице {resolvedPage}, " +
                 "но браузер не перешёл в карточку организации.", ex);
         }
 
@@ -96,7 +146,195 @@ internal static class EiasOrganizationCatalogClickResolver
                 $"После клика по «{organization.Name}» открыт неожиданный URL: {resolvedUrl}");
         }
 
+        if (resolvedPage != organization.SourcePage)
+        {
+            telemetry.Warning(
+                ParserPipelineStage.DetailsNavigation,
+                "Catalog source page corrected",
+                $"SourcePage={organization.SourcePage}, фактическая строка найдена на странице {resolvedPage}. " +
+                "SourcePage используется только как hint, потому что порядок DevExpress может отличаться между сессиями.",
+                workerId: workerId,
+                page: resolvedPage,
+                itemIndex: itemIndex,
+                totalItems: totalItems,
+                organizationName: organization.Name,
+                inn: organization.Inn,
+                code: "CATALOG_SOURCE_PAGE_MISMATCH",
+                dataSource: "catalog");
+        }
+
         return resolvedUrl;
+    }
+
+    private static IReadOnlyList<int> BuildPageOrder(int preferredPage, int totalPages)
+    {
+        var pages = new List<int> { preferredPage };
+
+        for (var distance = 1; pages.Count < totalPages; distance++)
+        {
+            var left = preferredPage - distance;
+            var right = preferredPage + distance;
+
+            if (left >= 1)
+                pages.Add(left);
+
+            if (right <= totalPages)
+                pages.Add(right);
+        }
+
+        return pages.Distinct().ToArray();
+    }
+
+    private static MatchResult? WaitForMatchingRow(
+        SeleniumWorkerBrowser browser,
+        OrganizationReference organization,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var wait = new WebDriverWait(browser.Driver, timeout)
+        {
+            PollingInterval = TimeSpan.FromMilliseconds(250)
+        };
+
+        try
+        {
+            return wait.Until(d =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    d.SwitchTo().DefaultContent();
+                    return FindMatchingRow(d, organization);
+                }
+                catch (WebDriverException)
+                {
+                    return null;
+                }
+            });
+        }
+        catch (WebDriverTimeoutException)
+        {
+            return null;
+        }
+    }
+
+    private static MatchResult? FindMatchingRow(
+        IWebDriver driver,
+        OrganizationReference organization)
+    {
+        var json = ((IJavaScriptExecutor)driver).ExecuteScript("""
+            const expectedName = arguments[0];
+            const expectedInn = arguments[1];
+            const expectedKpp = arguments[2];
+
+            const normalize = value => (value || '')
+                .replace(/\u00a0/g, ' ')
+                .replace(/[«»„“”]/g, '"')
+                .replace(/\s+/g, ' ')
+                .trim()
+                .toLowerCase();
+
+            const rendered = el => {
+                if (!el) return false;
+                const s = getComputedStyle(el);
+                return s.display !== 'none' &&
+                       s.visibility !== 'hidden' &&
+                       s.opacity !== '0' &&
+                       el.getClientRects().length > 0;
+            };
+
+            const tables = Array.from(document.querySelectorAll(
+                "[id='ASPxGridView2_DXMainTable']"
+            ));
+            const table = tables.find(rendered) || tables[tables.length - 1];
+            if (!table) return '';
+
+            const rows = Array.from(table.querySelectorAll(
+                "tr[id^='ASPxGridView2_DXDataRow']"
+            ));
+
+            const mapped = rows.map(row => {
+                const cells = Array.from(row.querySelectorAll(':scope > td.dxgv'));
+                return {
+                    row,
+                    name: normalize(cells[0]?.textContent),
+                    inn: normalize(cells[1]?.textContent),
+                    kpp: normalize(cells[2]?.textContent)
+                };
+            }).filter(x => x.inn);
+
+            const name = normalize(expectedName);
+            const inn = normalize(expectedInn);
+            const kpp = normalize(expectedKpp);
+
+            let found = mapped.find(x =>
+                x.name === name && x.inn === inn && x.kpp === kpp);
+            if (found) return JSON.stringify({ rowId: found.row.id || '', strategy: 'name+inn+kpp' });
+
+            found = mapped.find(x => x.inn === inn && x.kpp === kpp);
+            if (found) return JSON.stringify({ rowId: found.row.id || '', strategy: 'inn+kpp' });
+
+            const byInn = mapped.filter(x => x.inn === inn);
+            if (byInn.length === 1)
+                return JSON.stringify({ rowId: byInn[0].row.id || '', strategy: 'unique-inn' });
+
+            return '';
+            """,
+            organization.Name,
+            organization.Inn,
+            organization.Kpp)?.ToString();
+
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+
+        var raw = JsonSerializer.Deserialize<RawMatchResult>(json, JsonOptions);
+        return raw is null || string.IsNullOrWhiteSpace(raw.RowId)
+            ? null
+            : new MatchResult(raw.RowId, raw.Strategy);
+    }
+
+    private static void ClickMatchedRow(
+        SeleniumWorkerBrowser browser,
+        string rowId,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastException = null;
+
+        for (var attempt = 1; attempt <= 8; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                browser.Driver.SwitchTo().DefaultContent();
+
+                var row = browser.Driver.FindElement(By.Id(rowId));
+                var cell = row.FindElements(By.CssSelector(":scope > td.dxgv")).FirstOrDefault()
+                    ?? row.FindElements(By.TagName("td")).FirstOrDefault();
+
+                if (cell is null)
+                    throw new NoSuchElementException($"В строке {rowId} отсутствует первая ячейка.");
+
+                new Actions(browser.Driver)
+                    .ScrollToElement(cell)
+                    .MoveToElement(cell)
+                    .Pause(TimeSpan.FromMilliseconds(100))
+                    .Click(cell)
+                    .Perform();
+
+                return;
+            }
+            catch (WebDriverException ex)
+            {
+                lastException = ex;
+                Thread.Sleep(180);
+            }
+        }
+
+        throw new WebDriverException(
+            $"Не удалось кликнуть найденную строку {rowId} организации.",
+            lastException);
     }
 
     private static void WaitForCatalog(
@@ -135,6 +373,13 @@ internal static class EiasOrganizationCatalogClickResolver
                     const table = tables.find(visible) || tables[tables.length - 1];
                     if (!table) return false;
 
+                    const loading = [
+                        document.getElementById('ASPxGridView2_LP'),
+                        document.getElementById('ASPxGridView2_LD')
+                    ].some(visible);
+
+                    if (loading) return false;
+
                     return table.querySelectorAll(
                         "tr[id^='ASPxGridView2_DXDataRow']"
                     ).length > 0;
@@ -145,133 +390,6 @@ internal static class EiasOrganizationCatalogClickResolver
                 return false;
             }
         });
-    }
-
-    private static bool ClickOrganizationCell(
-        SeleniumWorkerBrowser browser,
-        OrganizationReference organization,
-        CancellationToken cancellationToken)
-    {
-        Exception? lastException = null;
-
-        for (var attempt = 1; attempt <= 6; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            try
-            {
-                browser.Driver.SwitchTo().DefaultContent();
-
-                var rowId = ((IJavaScriptExecutor)browser.Driver).ExecuteScript("""
-                    const expectedName = arguments[0];
-                    const expectedInn = arguments[1];
-                    const expectedKpp = arguments[2];
-
-                    const normalize = value => (value || '')
-                        .replace(/\u00a0/g, ' ')
-                        .replace(/\s+/g, ' ')
-                        .trim();
-
-                    const rendered = el => {
-                        if (!el) return false;
-                        const s = getComputedStyle(el);
-                        return s.display !== 'none' &&
-                               s.visibility !== 'hidden' &&
-                               s.opacity !== '0' &&
-                               el.getClientRects().length > 0;
-                    };
-
-                    const tables = Array.from(document.querySelectorAll(
-                        "[id='ASPxGridView2_DXMainTable']"
-                    ));
-                    const table = tables.find(rendered) || tables[tables.length - 1];
-                    if (!table) return '';
-
-                    const rows = Array.from(table.querySelectorAll(
-                        "tr[id^='ASPxGridView2_DXDataRow']"
-                    ));
-
-                    const exact = rows.find(row => {
-                        const cells = Array.from(row.querySelectorAll(':scope > td.dxgv'));
-                        if (cells.length < 3) return false;
-
-                        return normalize(cells[0].textContent) === normalize(expectedName) &&
-                               normalize(cells[1].textContent) === normalize(expectedInn) &&
-                               normalize(cells[2].textContent) === normalize(expectedKpp);
-                    });
-
-                    if (exact) return exact.id || '';
-
-                    // Fallback для редких случаев, когда сайт немного меняет отображаемое имя:
-                    // ИНН + КПП достаточно уникальны внутри выбранного каталога.
-                    const byTaxIds = rows.find(row => {
-                        const cells = Array.from(row.querySelectorAll(':scope > td.dxgv'));
-                        if (cells.length < 3) return false;
-
-                        return normalize(cells[1].textContent) === normalize(expectedInn) &&
-                               normalize(cells[2].textContent) === normalize(expectedKpp);
-                    });
-
-                    return byTaxIds?.id || '';
-                    """,
-                    organization.Name,
-                    organization.Inn,
-                    organization.Kpp)?.ToString();
-
-                if (string.IsNullOrWhiteSpace(rowId))
-                    return false;
-
-                // Как и в старой рабочей WinForms-версии: кликаем именно первую ячейку.
-                // Element заново получается прямо перед кликом и нигде не кэшируется.
-                var row = browser.Driver.FindElement(By.Id(rowId));
-                var cell = row.FindElements(By.CssSelector(":scope > td.dxgv")).FirstOrDefault()
-                    ?? row.FindElements(By.TagName("td")).FirstOrDefault();
-
-                if (cell is null)
-                    return false;
-
-                new Actions(browser.Driver)
-                    .ScrollToElement(cell)
-                    .MoveToElement(cell)
-                    .Pause(TimeSpan.FromMilliseconds(100))
-                    .Click(cell)
-                    .Perform();
-
-                return true;
-            }
-            catch (StaleElementReferenceException ex)
-            {
-                lastException = ex;
-            }
-            catch (ElementClickInterceptedException ex)
-            {
-                lastException = ex;
-            }
-            catch (ElementNotInteractableException ex)
-            {
-                lastException = ex;
-            }
-            catch (MoveTargetOutOfBoundsException ex)
-            {
-                lastException = ex;
-            }
-            catch (WebDriverException ex)
-            {
-                lastException = ex;
-            }
-
-            Thread.Sleep(150);
-            WaitForCatalog(browser, cancellationToken);
-        }
-
-        if (lastException is not null)
-        {
-            throw new WebDriverException(
-                $"Не удалось кликнуть строку организации «{organization.Name}» в каталоге.",
-                lastException);
-        }
-
-        return false;
     }
 
     private static void WaitForDocument(
@@ -296,4 +414,7 @@ internal static class EiasOrganizationCatalogClickResolver
             }
         });
     }
+
+    private sealed record RawMatchResult(string RowId, string Strategy);
+    private sealed record MatchResult(string RowId, string Strategy);
 }

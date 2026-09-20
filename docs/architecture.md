@@ -38,10 +38,10 @@ OrganizationReference[]
 → concurrent queue
 → 1..6 independent ChromeDriver workers
 → PublicDisclosureInfoOrg.aspx
-→ form 4.1.1 row
-→ TemplatePrinter URL
-→ Form411Parser
-→ OrganizationContactDetails[]
+→ published TemplatePrinter candidates
+→ workbook HTML
+→ Form411Parser + Form101Parser
+→ merged OrganizationContactDetails[]
 ```
 
 Один `IWebDriver` никогда не используется несколькими worker'ами одновременно.
@@ -50,7 +50,7 @@ OrganizationReference[]
 
 Карточка организации уже содержит прямой URL внутри `openTemplateDialog(...)`. Поэтому details crawler не кликает иконку, jQuery dialog и iframe.
 
-TemplatePrinter в свою очередь уже содержит HTML всех листов workbook. Парсер ищет table, содержащий заголовок формы 4.1.1, и читает параметры по стабильным кодам.
+TemplatePrinter уже содержит HTML всех листов workbook. Парсер структурно ищет 4.1.1 и 1.0.1: 4.1.1 является главным источником контактов, 1.0.1 добавляет сведения о системе, регулируемой деятельности и территории. Переключение вкладок не требуется.
 
 ## Модели
 
@@ -69,7 +69,7 @@ TemplatePrinter в свою очередь уже содержит HTML всех
 
 ### OrganizationContactDetails
 
-Результат формы 4.1.1:
+Объединённый результат workbook (4.1.1 + опциональная 1.0.1):
 
 - организация / ИНН / КПП;
 - телефоны организации;

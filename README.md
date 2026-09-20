@@ -1,12 +1,14 @@
 # ReestrParse
 
-> WPF-приложение для сбора реестра регулируемых организаций и контактных данных из формы **4.1.1 «Общая информация об организации»** ФГИС ЕИАС.
+> WPF-приложение для сбора реестра регулируемых организаций ФГИС ЕИАС, контактных данных из **4.1.1** и дополнительного контекста из **1.0.1**, с параллельными Selenium-workers и live observability.
 
 ![.NET](https://img.shields.io/badge/.NET-10.0_LTS-512BD4)
 ![WPF](https://img.shields.io/badge/UI-WPF-0C54C2)
 ![Selenium](https://img.shields.io/badge/Selenium-4.49.0-43B02A)
 ![AngleSharp](https://img.shields.io/badge/AngleSharp-1.8.1-6C63FF)
 ![Architecture](https://img.shields.io/badge/architecture-layered-111827)
+
+> **v0.9:** multi-form/data-quality update: 4.1.1 остаётся основным источником контактов, форма 1.0.1 используется как дополнительный/fallback источник; каталог fallback теперь ищет организацию по соседним страницам, telemetry получил коды ошибок и источник данных, а UI показывает partial-result и расширенные детали выбранной строки.
 
 > **v0.8:** observability/UX update: монитор парсера получил непрерывный elapsed/ETA, отдельную привязку исходной страницы к каждой операции, более подробный журнал, а в корень репозитория добавлен портфолио-документ [`ARCHITECTURE.md`](ARCHITECTURE.md) с диаграммами и разбором асинхронности/worker pool.
 
@@ -19,7 +21,7 @@
 
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — подробный русскоязычный разбор архитектуры для разработки и портфолио: Mermaid-схемы, pipeline, Selenium/AngleSharp, async vs parallelism, worker pool, telemetry, cancellation и fault isolation.
 - [`docs/pagination-strategy.md`](docs/pagination-strategy.md) — стратегия обхода DevExpress-пагинации.
-- [`docs/details-pipeline.md`](docs/details-pipeline.md) — обработка карточек и формы 4.1.1.
+- [`docs/details-pipeline.md`](docs/details-pipeline.md) — обработка карточек и multi-form pipeline 4.1.1/1.0.1.
 - [`docs/github-repository.md`](docs/github-repository.md) — рекомендуемое описание, topics и stack для GitHub.
 
 ## Что умеет проект
@@ -40,14 +42,17 @@
    - fast path — прямой `DetailUrl/orgId`, если DevExpress его отдал;
    - fallback — worker открывает отфильтрованный каталог, переходит на `SourcePage` и кликает первую ячейку нужной строки по `Название + ИНН + КПП`.
 7. После fallback реальный `orgId` извлекается из URL открывшейся карточки.
-8. На странице организации находит **только форму 4.1.1** в `ASPxGridViewDet`.
-9. Не кликает модальное окно/iframe: извлекает прямой `TemplatePrinter.aspx` URL из `openTemplateDialog(...)`.
-10. В HTML TemplatePrinter находит лист **«Форма 4.1.1»** без переключения вкладок и читает данные по стабильным кодам параметров.
-11. Заполняет контакты в WPF-таблице по мере завершения worker'ов.
+8. На странице организации собирает все опубликованные `TemplatePrinter.aspx` URL и приоритизирует **4.1.1**, затем **1.0.1** и остальные опубликованные workbook-кандидаты.
+9. Не кликает модальное окно/iframe: прямой URL извлекается из `openTemplateDialog(...)`.
+10. Один HTML workbook разбирается сразу по нескольким листам: **4.1.1** даёт контакты, **1.0.1** — систему, вид деятельности, регион/район/муниципальное образование и дату обновления.
+11. Если 4.1.1 отсутствует, но 1.0.1 доступна, результат помечается **«Частично»**, а не превращается в общую ошибку.
+12. Telemetry фиксирует источник данных, код ошибки/предупреждения и timings каждого подэтапа.
 
-## Какие контакты извлекаются
+## Какие данные извлекаются
 
-Для формы 4.1.1 используются стабильные коды параметров, а не номера HTML-строк:
+### Форма 4.1.1 — основной источник контактов
+
+Используются стабильные коды параметров, а не номера HTML-строк:
 
 | Код | Данные |
 | --- | --- |
@@ -64,6 +69,19 @@
 | `7.1` | Контактные телефоны организации; поддерживается несколько строк |
 | `8` | Официальный сайт |
 | `9` | Email организации |
+
+Email дополнительно валидируется: URL/служебная ссылка больше не попадёт в колонку почты; такое значение будет записано в предупреждение качества данных.
+
+### Форма 1.0.1 — дополнительный контекст
+
+| Код | Данные |
+| --- | --- |
+| `1` | Дата заполнения/внесения изменений |
+| `2.1` | Централизованная система коммунальной инфраструктуры |
+| `3.1` | Регулируемый вид деятельности |
+| `4.1.1` | Субъект РФ |
+| `4.1.1.1` | Муниципальный район |
+| `4.1.1.1.1` | Муниципальное образование |
 
 ## Почему новая схема быстрее старой
 
@@ -88,9 +106,9 @@ Map.aspx → filters → search → page 1 → page 2 → ... → OrganizationRe
 
 Details phase — N Selenium workers
 OrganizationReference queue
-      ├─ Chrome #1 → detail → 4.1.1 → TemplatePrinter → contacts
-      ├─ Chrome #2 → detail → 4.1.1 → TemplatePrinter → contacts
-      └─ Chrome #3 → detail → 4.1.1 → TemplatePrinter → contacts
+      ├─ Chrome #1 → detail → TemplatePrinter → 4.1.1 + 1.0.1
+      ├─ Chrome #2 → detail → TemplatePrinter → 4.1.1 + 1.0.1
+      └─ Chrome #3 → detail → TemplatePrinter → 4.1.1 + 1.0.1
 ```
 
 Основная browser-session каталога больше не используется как навигационный стек. Если прямой URL недоступен, fallback выполняется в **отдельном worker-браузере**: он открывает каталог заново, переходит сразу на сохранённую страницу и кликает организацию. Поэтому пагинация основного списка WPF не сбрасывается.
@@ -137,9 +155,10 @@ ReestrParse.Wpf
 - получение `orgId`/DetailUrl;
 - click fallback по `Название + ИНН + КПП` для строк без row key;
 - worker pool для карточек;
-- поиск формы 4.1.1;
-- извлечение `TemplatePrinter` URL;
-- HTML parsing через AngleSharp.
+- discovery всех опубликованных TemplatePrinter-кандидатов;
+- приоритет 4.1.1 + fallback/дополнение 1.0.1;
+- HTML parsing через AngleSharp;
+- validation/quality warnings и structured telemetry.
 
 ### WPF
 
@@ -152,11 +171,13 @@ MVVM-интерфейс оператора:
 - live-progress;
 - поиск по организации, ИНН, КПП, телефону, email и ответственному лицу;
 - контактные данные прямо в таблице;
+- дополнительные сведения выбранной организации через `RowDetails` без раздувания основной таблицы;
+- статусы `Готово / Частично / Ошибка / Предупреждения`;
 - отдельное окно **«Мониторинг / логи»**, не расширяющее основной DataGrid;
 - live progress по страницам и организациям;
 - elapsed / ETA / среднее время на организацию / throughput;
 - состояние workers, текущая организация и страница каталога;
-- подробные step timings: карточка → поиск 4.1.1 → TemplatePrinter → HTML parse;
+- подробные step timings: карточка → discovery форм → TemplatePrinter → 4.1.1/1.0.1 → data quality;
 - фильтрация журнала по уровню и тексту;
 - экспорт runtime-лога в CSV/TXT.
 
@@ -233,7 +254,9 @@ docs/
 - [x] DevExpress pagination каталога
 - [x] Каталог `Организация / ИНН / КПП`
 - [x] Гибридный details pipeline: direct URL + catalog click fallback без разрушения основной пагинации
-- [x] Поиск только формы 4.1.1
+- [x] Приоритетный поиск формы 4.1.1 + fallback на опубликованные workbook
+- [x] Дополнительный парсинг формы 1.0.1
+- [x] Валидация email и предупреждения качества данных
 - [x] Парсинг TemplatePrinter без кликов по Excel-вкладкам
 - [x] Parallel Selenium worker pool для контактных данных
 - [x] Отдельное окно мониторинга pipeline / timings / errors / workers

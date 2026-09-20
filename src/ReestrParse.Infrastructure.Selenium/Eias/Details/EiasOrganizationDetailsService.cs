@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using OpenQA.Selenium;
+using OpenQA.Selenium.Support.UI;
 using ReestrParse.Application.Details;
 using ReestrParse.Application.Monitoring;
 using ReestrParse.Domain.Catalog;
@@ -31,7 +32,8 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
             ParserPipelineStage.DetailsQueue,
             "Details crawl started",
             $"В очередь поставлено {organizations.Count} организаций; workers: {workerCount}; headless: {options.Headless}.",
-            totalItems: organizations.Count);
+            totalItems: organizations.Count,
+            code: "DETAILS_QUEUE_STARTED");
 
         var queue = new ConcurrentQueue<(int Index, OrganizationReference Organization)>(
             organizations.Select((organization, index) => (index, organization)));
@@ -66,7 +68,9 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                 itemIndex: Volatile.Read(ref counters.Completed),
                 totalItems: organizations.Count,
                 succeeded: Volatile.Read(ref counters.Succeeded),
-                failed: Volatile.Read(ref counters.Failed));
+                failed: Volatile.Read(ref counters.Failed),
+                partial: Volatile.Read(ref counters.Partial),
+                code: "DETAILS_CANCELLED");
             throw;
         }
 
@@ -75,13 +79,17 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
         telemetry.Success(
             ParserPipelineStage.DetailsCompleted,
             "Details crawl completed",
-            $"Контакты обработаны: {Volatile.Read(ref counters.Completed)}/{organizations.Count}; " +
-            $"успешно {Volatile.Read(ref counters.Succeeded)}, ошибок {Volatile.Read(ref counters.Failed)}.",
+            $"Обработано {Volatile.Read(ref counters.Completed)}/{organizations.Count}; " +
+            $"полностью {Volatile.Read(ref counters.Succeeded)}, " +
+            $"частично {Volatile.Read(ref counters.Partial)}, " +
+            $"ошибок {Volatile.Read(ref counters.Failed)}.",
             totalSw.Elapsed,
             itemIndex: Volatile.Read(ref counters.Completed),
             totalItems: organizations.Count,
             succeeded: Volatile.Read(ref counters.Succeeded),
-            failed: Volatile.Read(ref counters.Failed));
+            failed: Volatile.Read(ref counters.Failed),
+            partial: Volatile.Read(ref counters.Partial),
+            code: "DETAILS_COMPLETED");
 
         return results
             .Select((result, index) => result ?? new OrganizationDetailsResult(
@@ -109,7 +117,8 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
             "Worker started",
             $"Worker #{workerId} запущен.",
             workerId: workerId,
-            totalItems: total);
+            totalItems: total,
+            code: "WORKER_STARTED");
 
         try
         {
@@ -131,7 +140,8 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                     itemIndex: itemPosition,
                     totalItems: total,
                     organizationName: organization.Name,
-                    inn: organization.Inn);
+                    inn: organization.Inn,
+                    code: "ORGANIZATION_STARTED");
 
                 try
                 {
@@ -147,17 +157,23 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                         telemetry.Info(
                             ParserPipelineStage.DetailsNavigation,
                             "Catalog click fallback started",
-                            $"orgId/DetailUrl отсутствует. Worker #{workerId} открывает страницу каталога {organization.SourcePage} и кликает строку организации.",
+                            $"orgId/DetailUrl отсутствует. Worker #{workerId} ищет организацию в отдельной catalog-session.",
                             workerId: workerId,
                             page: organization.SourcePage,
                             itemIndex: itemPosition,
                             totalItems: total,
                             organizationName: organization.Name,
-                            inn: organization.Inn);
+                            inn: organization.Inn,
+                            code: "CATALOG_FALLBACK_STARTED",
+                            dataSource: "catalog");
 
                         detailUrl = EiasOrganizationCatalogClickResolver.ResolveAndOpen(
                             browser,
                             organization,
+                            telemetry,
+                            workerId,
+                            itemPosition,
+                            total,
                             cancellationToken);
                         detailAlreadyOpen = true;
                     }
@@ -175,7 +191,9 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                         itemIndex: itemPosition,
                         totalItems: total,
                         organizationName: organization.Name,
-                        inn: organization.Inn);
+                        inn: organization.Inn,
+                        code: usedFallback ? "CATALOG_FALLBACK_OK" : "DETAIL_URL_DIRECT",
+                        dataSource: usedFallback ? "catalog click" : "catalog metadata");
 
                     result = ProcessOrganization(
                         browser,
@@ -208,19 +226,36 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                 results[item.Index] = result;
 
                 var currentCompleted = Interlocked.Increment(ref counters.Completed);
-                var currentSucceeded = result.IsSuccess
-                    ? Interlocked.Increment(ref counters.Succeeded)
-                    : Volatile.Read(ref counters.Succeeded);
-                var currentFailed = result.IsSuccess
-                    ? Volatile.Read(ref counters.Failed)
-                    : Interlocked.Increment(ref counters.Failed);
+                int currentSucceeded;
+                int currentPartial;
+                int currentFailed;
 
-                if (result.IsSuccess)
+                if (result.IsFull)
+                {
+                    currentSucceeded = Interlocked.Increment(ref counters.Succeeded);
+                    currentPartial = Volatile.Read(ref counters.Partial);
+                    currentFailed = Volatile.Read(ref counters.Failed);
+                }
+                else if (result.IsPartial)
+                {
+                    currentSucceeded = Volatile.Read(ref counters.Succeeded);
+                    currentPartial = Interlocked.Increment(ref counters.Partial);
+                    currentFailed = Volatile.Read(ref counters.Failed);
+                }
+                else
+                {
+                    currentSucceeded = Volatile.Read(ref counters.Succeeded);
+                    currentPartial = Volatile.Read(ref counters.Partial);
+                    currentFailed = Interlocked.Increment(ref counters.Failed);
+                }
+
+                if (result.IsFull)
                 {
                     telemetry.Success(
-                        ParserPipelineStage.DetailsForm411,
+                        ParserPipelineStage.DetailsCompleted,
                         "Organization completed",
-                        $"Контакты получены за {itemSw.Elapsed.TotalSeconds:F2} с.",
+                        $"Данные получены полностью за {itemSw.Elapsed.TotalSeconds:F2} с. " +
+                        $"Формы: {result.Details!.ParsedForms}.",
                         itemSw.Elapsed,
                         workerId,
                         page: organization.SourcePage,
@@ -228,13 +263,36 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                         totalItems: total,
                         succeeded: currentSucceeded,
                         failed: currentFailed,
+                        partial: currentPartial,
                         organizationName: organization.Name,
-                        inn: organization.Inn);
+                        inn: organization.Inn,
+                        code: "ORGANIZATION_FULL",
+                        dataSource: result.Details.ParsedForms);
+                }
+                else if (result.IsPartial)
+                {
+                    telemetry.Warning(
+                        ParserPipelineStage.DetailsCompleted,
+                        "Organization completed",
+                        $"Организация обработана частично за {itemSw.Elapsed.TotalSeconds:F2} с.: " +
+                        "получена форма 1.0.1, но 4.1.1 с контактами не найдена.",
+                        itemSw.Elapsed,
+                        workerId,
+                        page: organization.SourcePage,
+                        itemIndex: currentCompleted,
+                        totalItems: total,
+                        succeeded: currentSucceeded,
+                        failed: currentFailed,
+                        partial: currentPartial,
+                        organizationName: organization.Name,
+                        inn: organization.Inn,
+                        code: "ORGANIZATION_PARTIAL_FORM101",
+                        dataSource: result.Details!.ParsedForms);
                 }
                 else
                 {
                     telemetry.Error(
-                        ParserPipelineStage.DetailsForm411,
+                        ParserPipelineStage.DetailsCompleted,
                         "Organization completed",
                         $"Организация завершена с ошибкой за {itemSw.Elapsed.TotalSeconds:F2} с.",
                         duration: itemSw.Elapsed,
@@ -244,9 +302,11 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                         totalItems: total,
                         succeeded: currentSucceeded,
                         failed: currentFailed,
+                        partial: currentPartial,
                         organizationName: organization.Name,
                         inn: organization.Inn,
-                        error: result.Error);
+                        error: result.Error,
+                        code: ClassifyErrorCode(result.Error));
                 }
 
                 progress?.Report(new DetailsProgress(
@@ -254,12 +314,17 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                     total,
                     currentSucceeded,
                     currentFailed,
+                    currentPartial,
                     organization,
                     result.Details,
                     result.Error,
                     workerId,
                     itemSw.Elapsed,
-                    result.IsSuccess ? "4.1.1 parsed" : "failed"));
+                    result.IsFull
+                        ? "full"
+                        : result.IsPartial
+                            ? "partial"
+                            : "failed"));
             }
         }
         finally
@@ -276,7 +341,9 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                 itemIndex: Volatile.Read(ref counters.Completed),
                 totalItems: total,
                 succeeded: Volatile.Read(ref counters.Succeeded),
-                failed: Volatile.Read(ref counters.Failed));
+                failed: Volatile.Read(ref counters.Failed),
+                partial: Volatile.Read(ref counters.Partial),
+                code: "WORKER_STOPPED");
         }
     }
 
@@ -299,67 +366,54 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
             browser.Driver.Navigate().GoToUrl(detailUrl);
             WaitForDocument(browser, cancellationToken);
         }
+
+        WaitForPublishedForms(browser, cancellationToken);
         cardSw.Stop();
 
         telemetry.Success(
             ParserPipelineStage.DetailsNavigation,
             "Organization card loaded",
-            "Карточка организации загружена.",
+            "Карточка организации загружена; таблица опубликованных форм стабилизирована.",
             cardSw.Elapsed,
             workerId,
             page: organization.SourcePage,
             itemIndex: itemIndex,
             totalItems: totalItems,
             organizationName: organization.Name,
-            inn: organization.Inn);
+            inn: organization.Inn,
+            code: "ORGANIZATION_CARD_READY",
+            dataSource: "organization card");
 
         var detailPageUri = new Uri(browser.Driver.Url);
         var detailHtml = browser.Driver.PageSource;
 
-        var linkSw = Stopwatch.StartNew();
-        var templateUrl = EiasOrganizationPageReader.ExtractForm411TemplateUrl(
+        var discoverySw = Stopwatch.StartNew();
+        var candidates = EiasOrganizationPageReader.ExtractTemplateCandidates(
             detailHtml,
             detailPageUri);
-        linkSw.Stop();
+        discoverySw.Stop();
 
-        telemetry.Success(
-            ParserPipelineStage.DetailsForm411,
-            "4.1.1 link extracted",
-            "Найдена строка формы 4.1.1 и извлечён прямой TemplatePrinter URL.",
-            linkSw.Elapsed,
-            workerId,
-            page: organization.SourcePage,
-            itemIndex: itemIndex,
-            totalItems: totalItems,
-            organizationName: organization.Name,
-            inn: organization.Inn);
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var templateSw = Stopwatch.StartNew();
-        browser.Driver.Navigate().GoToUrl(templateUrl);
-        WaitForDocument(browser, cancellationToken);
-
-        browser.Wait.Until(d =>
+        if (candidates.Count == 0)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var source = d.PageSource;
-            return source.Contains("Форма 4.1.1", StringComparison.OrdinalIgnoreCase) &&
-                   source.Contains("Общая информация об организации", StringComparison.OrdinalIgnoreCase);
-        });
-        templateSw.Stop();
+            throw new InvalidOperationException(
+                "В карточке организации не найдено ни одной опубликованной формы с TemplatePrinter URL.");
+        }
 
         telemetry.Success(
-            ParserPipelineStage.DetailsForm411,
-            "TemplatePrinter loaded",
-            "TemplatePrinter загружен, лист 4.1.1 присутствует в HTML.",
-            templateSw.Elapsed,
+            ParserPipelineStage.DetailsFormDiscovery,
+            "Published forms discovered",
+            $"Найдено опубликованных TemplatePrinter-ссылок: {candidates.Count}. " +
+            $"4.1.1 в таблице: {(candidates.Any(x => x.IsForm411) ? "да" : "нет")}; " +
+            $"форма 1: {(candidates.Any(x => x.IsForm101) ? "да" : "нет")}.",
+            discoverySw.Elapsed,
             workerId,
             page: organization.SourcePage,
             itemIndex: itemIndex,
             totalItems: totalItems,
             organizationName: organization.Name,
-            inn: organization.Inn);
+            inn: organization.Inn,
+            code: "PUBLISHED_FORMS_DISCOVERED",
+            dataSource: "organization card");
 
         var enrichedSource = organization with
         {
@@ -369,29 +423,244 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
             DetailUrl = detailUrl
         };
 
-        var parseSw = Stopwatch.StartNew();
-        var details = EiasForm411Parser.Parse(
-            browser.Driver.PageSource,
-            enrichedSource,
-            detailUrl,
-            templateUrl);
-        parseSw.Stop();
+        OrganizationContactDetails? bestDetails = null;
+        var candidateErrors = new List<string>();
+        var checkedCandidates = 0;
 
-        telemetry.Success(
-            ParserPipelineStage.DetailsForm411,
-            "4.1.1 parsed",
-            $"Форма распарсена: телефонов организации {details.Phones.Count}; email: " +
-            $"{(string.IsNullOrWhiteSpace(details.Email) ? "нет" : "есть")}.",
-            parseSw.Elapsed,
-            workerId,
-            page: organization.SourcePage,
-            itemIndex: itemIndex,
-            totalItems: totalItems,
-            organizationName: organization.Name,
-            inn: organization.Inn);
+        // Обычно достаточно первого exact 4.1.1. Дополнительные кандидаты нужны как
+        // fallback для карточек, где строка 4.1.1 отсутствует, но workbook другой формы
+        // всё равно содержит лист 4.1.1/1.0.1.
+        foreach (var candidate in candidates.Take(6))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            checkedCandidates++;
 
-        return new OrganizationDetailsResult(organization, details, null);
+            var candidateSw = Stopwatch.StartNew();
+            telemetry.Info(
+                ParserPipelineStage.DetailsTemplate,
+                "Template candidate started",
+                $"Проверяем workbook: {candidate.Caption}.",
+                workerId: workerId,
+                page: organization.SourcePage,
+                itemIndex: itemIndex,
+                totalItems: totalItems,
+                organizationName: organization.Name,
+                inn: organization.Inn,
+                code: "TEMPLATE_CANDIDATE_STARTED",
+                dataSource: candidate.Caption);
+
+            try
+            {
+                browser.Driver.Navigate().GoToUrl(candidate.TemplateUrl);
+                WaitForDocument(browser, cancellationToken);
+                WaitForTemplateWorkbook(browser, cancellationToken);
+
+                var workbookHtml = browser.Driver.PageSource;
+                var parsed = EiasTemplateWorkbookParser.Parse(
+                    workbookHtml,
+                    enrichedSource,
+                    detailUrl,
+                    candidate.TemplateUrl);
+
+                candidateSw.Stop();
+
+                if (parsed.Details is null)
+                {
+                    var warning = $"{candidate.Caption}: workbook не содержит 4.1.1/1.0.1.";
+                    candidateErrors.Add(warning);
+                    telemetry.Warning(
+                        ParserPipelineStage.DetailsTemplate,
+                        "Template candidate skipped",
+                        warning,
+                        candidateSw.Elapsed,
+                        workerId,
+                        page: organization.SourcePage,
+                        itemIndex: itemIndex,
+                        totalItems: totalItems,
+                        organizationName: organization.Name,
+                        inn: organization.Inn,
+                        code: "TEMPLATE_NO_TARGET_SHEETS",
+                        dataSource: candidate.Caption);
+                    continue;
+                }
+
+                bestDetails = MergeDetails(bestDetails, parsed.Details);
+
+                telemetry.Success(
+                    ParserPipelineStage.DetailsTemplate,
+                    "Template candidate parsed",
+                    $"Workbook обработан: 4.1.1={(parsed.HasForm411 ? "да" : "нет")}, " +
+                    $"1.0.1={(parsed.HasForm101 ? "да" : "нет")}; " +
+                    $"предупреждений {parsed.Warnings.Count}.",
+                    candidateSw.Elapsed,
+                    workerId,
+                    page: organization.SourcePage,
+                    itemIndex: itemIndex,
+                    totalItems: totalItems,
+                    organizationName: organization.Name,
+                    inn: organization.Inn,
+                    code: parsed.HasForm411 ? "TEMPLATE_411_FOUND" : "TEMPLATE_101_ONLY",
+                    dataSource: candidate.Caption);
+
+                if (parsed.HasForm411)
+                {
+                    telemetry.Success(
+                        ParserPipelineStage.DetailsForm411,
+                        "4.1.1 parsed",
+                        $"Контакты: телефонов организации {parsed.Details.Phones.Count}; " +
+                        $"email {(string.IsNullOrWhiteSpace(parsed.Details.Email) ? "нет" : "есть")}.",
+                        candidateSw.Elapsed,
+                        workerId,
+                        page: organization.SourcePage,
+                        itemIndex: itemIndex,
+                        totalItems: totalItems,
+                        organizationName: organization.Name,
+                        inn: organization.Inn,
+                        code: "FORM_411_PARSED",
+                        dataSource: candidate.Caption);
+                }
+
+                if (parsed.HasForm101)
+                {
+                    telemetry.Success(
+                        ParserPipelineStage.DetailsForm101,
+                        "1.0.1 parsed",
+                        $"Доп. сведения: систем {parsed.Details.Systems.Count}, " +
+                        $"видов деятельности {parsed.Details.Activities.Count}, " +
+                        $"муниципалитетов {parsed.Details.MunicipalitiesList.Count}.",
+                        candidateSw.Elapsed,
+                        workerId,
+                        page: organization.SourcePage,
+                        itemIndex: itemIndex,
+                        totalItems: totalItems,
+                        organizationName: organization.Name,
+                        inn: organization.Inn,
+                        code: "FORM_101_PARSED",
+                        dataSource: candidate.Caption);
+                }
+
+                if (bestDetails.HasForm411 && bestDetails.HasForm101)
+                    break;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                candidateSw.Stop();
+                var error = $"{candidate.Caption}: {ShortError(ex.Message)}";
+                candidateErrors.Add(error);
+
+                telemetry.Warning(
+                    ParserPipelineStage.DetailsTemplate,
+                    "Template candidate failed",
+                    "Не удалось обработать один из опубликованных workbook; пробуем следующий.",
+                    candidateSw.Elapsed,
+                    workerId,
+                    page: organization.SourcePage,
+                    itemIndex: itemIndex,
+                    totalItems: totalItems,
+                    organizationName: organization.Name,
+                    inn: organization.Inn,
+                    error: error,
+                    code: "TEMPLATE_CANDIDATE_FAILED",
+                    dataSource: candidate.Caption);
+            }
+        }
+
+        if (bestDetails is null)
+        {
+            throw new InvalidOperationException(
+                $"Не удалось получить данные из {checkedCandidates} опубликованных workbook. " +
+                string.Join(" | ", candidateErrors.Take(3)));
+        }
+
+        if (bestDetails.DataWarnings.Count > 0)
+        {
+            telemetry.Warning(
+                ParserPipelineStage.DetailsDataQuality,
+                "Data quality warnings",
+                string.Join(" | ", bestDetails.DataWarnings.Take(5)),
+                workerId: workerId,
+                page: organization.SourcePage,
+                itemIndex: itemIndex,
+                totalItems: totalItems,
+                organizationName: organization.Name,
+                inn: organization.Inn,
+                code: "DATA_QUALITY_WARNING",
+                dataSource: bestDetails.ParsedForms);
+        }
+
+        if (!bestDetails.HasForm411 && bestDetails.HasForm101)
+        {
+            telemetry.Warning(
+                ParserPipelineStage.DetailsForm411,
+                "4.1.1 unavailable",
+                "Форма 4.1.1 не найдена ни в одном проверенном workbook. " +
+                "Организация сохранена как частичная по данным формы 1.0.1.",
+                workerId: workerId,
+                page: organization.SourcePage,
+                itemIndex: itemIndex,
+                totalItems: totalItems,
+                organizationName: organization.Name,
+                inn: organization.Inn,
+                code: "FORM_411_UNAVAILABLE_FORM101_FALLBACK",
+                dataSource: "1.0.1");
+        }
+
+        return new OrganizationDetailsResult(organization, bestDetails, null);
     }
+
+    private static OrganizationContactDetails MergeDetails(
+        OrganizationContactDetails? current,
+        OrganizationContactDetails incoming)
+    {
+        if (current is null)
+            return incoming;
+
+        // Контактные поля предпочитаем из результата, где реально присутствует 4.1.1.
+        var primary = incoming.HasForm411 && !current.HasForm411 ? incoming : current;
+        var secondary = ReferenceEquals(primary, current) ? incoming : current;
+
+        return primary with
+        {
+            OrganizationId = FirstNonEmpty(primary.OrganizationId, secondary.OrganizationId),
+            Name = FirstNonEmpty(primary.Name, secondary.Name),
+            Inn = FirstNonEmpty(primary.Inn, secondary.Inn),
+            Kpp = FirstNonEmpty(primary.Kpp, secondary.Kpp),
+            Phones = Union(primary.Phones, secondary.Phones),
+            Email = FirstNonEmpty(primary.Email, secondary.Email),
+            Website = FirstNonEmpty(primary.Website, secondary.Website),
+            ResponsibleFullName = FirstNonEmpty(primary.ResponsibleFullName, secondary.ResponsibleFullName),
+            ResponsiblePosition = FirstNonEmpty(primary.ResponsiblePosition, secondary.ResponsiblePosition),
+            ResponsiblePhone = FirstNonEmpty(primary.ResponsiblePhone, secondary.ResponsiblePhone),
+            ResponsibleEmail = FirstNonEmpty(primary.ResponsibleEmail, secondary.ResponsibleEmail),
+            ManagerFullName = FirstNonEmpty(primary.ManagerFullName, secondary.ManagerFullName),
+            PostalAddress = FirstNonEmpty(primary.PostalAddress, secondary.PostalAddress),
+            LocationAddress = FirstNonEmpty(primary.LocationAddress, secondary.LocationAddress),
+            HasForm411 = primary.HasForm411 || secondary.HasForm411,
+            HasForm101 = primary.HasForm101 || secondary.HasForm101,
+            DisclosureUpdatedAt = FirstNonEmpty(primary.DisclosureUpdatedAt, secondary.DisclosureUpdatedAt),
+            InfrastructureSystems = Union(primary.Systems, secondary.Systems),
+            RegulatedActivities = Union(primary.Activities, secondary.Activities),
+            ServiceRegions = Union(primary.Regions, secondary.Regions),
+            MunicipalDistricts = Union(primary.Districts, secondary.Districts),
+            Municipalities = Union(primary.MunicipalitiesList, secondary.MunicipalitiesList),
+            Warnings = Union(primary.DataWarnings, secondary.DataWarnings)
+        };
+    }
+
+    private static string FirstNonEmpty(string? first, string? second)
+        => !string.IsNullOrWhiteSpace(first) ? first : second ?? string.Empty;
+
+    private static IReadOnlyList<string> Union(
+        IEnumerable<string> first,
+        IEnumerable<string> second)
+        => first.Concat(second)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
 
     private static string? ResolveDetailUrl(OrganizationReference organization)
     {
@@ -411,6 +680,81 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
             new SphereOption(organization.SphereId, organization.SphereName),
             organization.FormValue,
             organization.OrganizationId);
+    }
+
+    private static void WaitForPublishedForms(
+        SeleniumWorkerBrowser browser,
+        CancellationToken cancellationToken)
+    {
+        var wait = new WebDriverWait(browser.Driver, TimeSpan.FromSeconds(15))
+        {
+            PollingInterval = TimeSpan.FromMilliseconds(250)
+        };
+
+        try
+        {
+            wait.Until(d =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                try
+                {
+                    d.SwitchTo().DefaultContent();
+                    var ready = string.Equals(
+                        ((IJavaScriptExecutor)d).ExecuteScript("return document.readyState")?.ToString(),
+                        "complete",
+                        StringComparison.OrdinalIgnoreCase);
+
+                    if (!ready)
+                        return false;
+
+                    return Convert.ToInt32(((IJavaScriptExecutor)d).ExecuteScript("""
+                        return document.querySelectorAll(
+                            "tr[id^='ASPxGridViewDet_DXDataRow'] a.get_template, " +
+                            "tr[id^='ASPxGridViewDet_DXDataRow'] a[onclick*='openTemplateDialog']"
+                        ).length;
+                        """)) > 0;
+                }
+                catch (WebDriverException)
+                {
+                    return false;
+                }
+            });
+        }
+        catch (WebDriverTimeoutException)
+        {
+            // Карточка может легитимно не содержать опубликованных форм. Дальнейший
+            // parser выдаст понятную доменную ошибку вместо Selenium timeout.
+        }
+    }
+
+    private static void WaitForTemplateWorkbook(
+        SeleniumWorkerBrowser browser,
+        CancellationToken cancellationToken)
+    {
+        var wait = new WebDriverWait(browser.Driver, TimeSpan.FromSeconds(25))
+        {
+            PollingInterval = TimeSpan.FromMilliseconds(250)
+        };
+
+        wait.Until(d =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            try
+            {
+                d.SwitchTo().DefaultContent();
+                var source = d.PageSource;
+                return source.Contains("id=\"sheets\"", StringComparison.OrdinalIgnoreCase) ||
+                       source.Contains("id='sheets'", StringComparison.OrdinalIgnoreCase) ||
+                       source.Contains("Форма 4.1.1", StringComparison.OrdinalIgnoreCase) ||
+                       source.Contains("Форма 1.0.1", StringComparison.OrdinalIgnoreCase);
+            }
+            catch (WebDriverException)
+            {
+                return false;
+            }
+        });
     }
 
     private static void WaitForDocument(
@@ -435,6 +779,27 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
         });
     }
 
+    private static string ClassifyErrorCode(string? error)
+    {
+        if (string.IsNullOrWhiteSpace(error))
+            return "DETAILS_UNKNOWN";
+
+        if (error.Contains("Не найдена строка организации", StringComparison.OrdinalIgnoreCase))
+            return "CATALOG_ROW_NOT_FOUND";
+
+        if (error.Contains("опубликован", StringComparison.OrdinalIgnoreCase))
+            return "NO_PUBLISHED_FORMS";
+
+        if (error.Contains("TemplatePrinter", StringComparison.OrdinalIgnoreCase) ||
+            error.Contains("workbook", StringComparison.OrdinalIgnoreCase))
+            return "TEMPLATE_READ_FAILED";
+
+        if (error.Contains("stale", StringComparison.OrdinalIgnoreCase))
+            return "SELENIUM_STALE";
+
+        return "DETAILS_FAILED";
+    }
+
     private static string ShortError(string? message)
     {
         if (string.IsNullOrWhiteSpace(message))
@@ -444,13 +809,14 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
         if (string.IsNullOrWhiteSpace(firstLine))
             return "Неизвестная ошибка.";
 
-        return firstLine.Length <= 220 ? firstLine : firstLine[..220] + "…";
+        return firstLine.Length <= 260 ? firstLine : firstLine[..260] + "…";
     }
 
     private sealed class DetailsCounters
     {
         public int Completed;
         public int Succeeded;
+        public int Partial;
         public int Failed;
     }
 }

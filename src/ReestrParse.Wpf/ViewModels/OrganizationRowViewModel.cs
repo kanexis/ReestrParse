@@ -21,6 +21,7 @@ public partial class OrganizationRowViewModel : ObservableObject
     public string RegionName => Reference.RegionName;
     public string SphereName => Reference.SphereName;
     public int SourcePage => Reference.SourcePage;
+
     [ObservableProperty]
     private string organizationId = string.Empty;
 
@@ -44,6 +45,9 @@ public partial class OrganizationRowViewModel : ObservableObject
     private string responsiblePerson = string.Empty;
 
     [ObservableProperty]
+    private string responsiblePosition = string.Empty;
+
+    [ObservableProperty]
     private string responsiblePhone = string.Empty;
 
     [ObservableProperty]
@@ -53,6 +57,30 @@ public partial class OrganizationRowViewModel : ObservableObject
     private string manager = string.Empty;
 
     [ObservableProperty]
+    private string postalAddress = string.Empty;
+
+    [ObservableProperty]
+    private string locationAddress = string.Empty;
+
+    [ObservableProperty]
+    private string parsedForms = "—";
+
+    [ObservableProperty]
+    private string disclosureUpdatedAt = string.Empty;
+
+    [ObservableProperty]
+    private string infrastructureSystems = string.Empty;
+
+    [ObservableProperty]
+    private string regulatedActivities = string.Empty;
+
+    [ObservableProperty]
+    private string serviceTerritory = string.Empty;
+
+    [ObservableProperty]
+    private string dataWarnings = string.Empty;
+
+    [ObservableProperty]
     private string contactStatus = "Не загружены";
 
     [ObservableProperty]
@@ -60,28 +88,50 @@ public partial class OrganizationRowViewModel : ObservableObject
 
     public void MarkQueued()
     {
-        ContactStatus = HasDetailUrl ? "В очереди — прямой URL" : "В очереди — клик по каталогу";
+        ContactStatus = HasDetailUrl ? "В очереди — прямой URL" : "В очереди — fallback";
         ContactError = string.Empty;
+        DataWarnings = string.Empty;
     }
 
     public void Apply(DetailsProgress progress)
     {
         if (progress.Details is not null)
         {
-            Phones = string.Join("; ", progress.Details.Phones);
-            Email = progress.Details.Email;
-            Website = progress.Details.Website;
-            ResponsiblePerson = progress.Details.ResponsibleFullName;
-            ResponsiblePhone = progress.Details.ResponsiblePhone;
-            ResponsibleEmail = progress.Details.ResponsibleEmail;
-            Manager = progress.Details.ManagerFullName;
-            OrganizationId = progress.Details.OrganizationId;
-            ContactStatus = "Готово";
+            var details = progress.Details;
+
+            Phones = string.Join("; ", details.Phones);
+            Email = details.Email;
+            Website = details.Website;
+            ResponsiblePerson = details.ResponsibleFullName;
+            ResponsiblePosition = details.ResponsiblePosition;
+            ResponsiblePhone = details.ResponsiblePhone;
+            ResponsibleEmail = details.ResponsibleEmail;
+            Manager = details.ManagerFullName;
+            PostalAddress = details.PostalAddress;
+            LocationAddress = details.LocationAddress;
+            OrganizationId = details.OrganizationId;
+            ParsedForms = details.ParsedForms;
+            DisclosureUpdatedAt = details.DisclosureUpdatedAt;
+            InfrastructureSystems = string.Join("; ", details.Systems);
+            RegulatedActivities = string.Join("; ", details.Activities);
+            ServiceTerritory = string.Join("; ",
+                details.Regions
+                    .Concat(details.Districts)
+                    .Concat(details.MunicipalitiesList)
+                    .Distinct(StringComparer.OrdinalIgnoreCase));
+            DataWarnings = string.Join(" | ", details.DataWarnings);
+
+            ContactStatus = details.IsPartial
+                ? "Частично"
+                : details.DataWarnings.Count > 0
+                    ? "Готово · предупреждения"
+                    : "Готово";
+
             ContactError = string.Empty;
             return;
         }
 
         ContactStatus = "Ошибка";
-        ContactError = progress.Error ?? "Не удалось получить контакты.";
+        ContactError = progress.Error ?? "Не удалось получить данные организации.";
     }
 }

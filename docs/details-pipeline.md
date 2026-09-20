@@ -1,82 +1,91 @@
-# Details pipeline: форма 4.1.1
+# Details pipeline: карточка организации и формы 4.1.1 / 1.0.1
 
-## 1. Два способа открыть карточку
+## Цель
 
-Crawler использует гибридную схему.
+После catalog phase каждая `OrganizationReference` обрабатывается независимо. Основная Selenium-сессия каталога больше не используется как history/navigation stack.
 
-### Fast path — прямой URL
+## 1. Открытие карточки
 
-Во время чтения `ASPxGridView2` приложение пытается получить внутренний row key / `orgId`.
-Если он доступен, сразу строится `PublicDisclosureInfoOrg.aspx?...&orgId=...`.
+### Fast path
 
-### Fallback — реальный клик по строке
+Если каталог отдал `OrganizationId`/`DetailUrl`, worker сразу открывает `PublicDisclosureInfoOrg.aspx`.
 
-На части каталогов DevExpress не отдаёт row key. Это больше не считается ошибкой.
+### Catalog-click fallback
 
-Отдельный Selenium worker:
+Если row key недоступен, отдельный worker-browser открывает отфильтрованный каталог. `SourcePage` используется как **подсказка**, а не как абсолютная истина: worker проверяет ожидаемую страницу и соседние страницы, ждёт появление строки и сопоставляет её по:
 
-1. строит прямой URL отфильтрованного `PublicDisclosureInfo.aspx`;
-2. открывает его в собственной ChromeDriver-сессии;
-3. переходит сразу на сохранённую `SourcePage` организации;
-4. находит строку по `Название + ИНН + КПП`;
-5. кликает первую ячейку организации — тот же механизм использовался в старой рабочей WinForms-версии;
-6. ждёт перехода на `PublicDisclosureInfoOrg.aspx`;
-7. сохраняет фактический URL и извлекает из него `orgId`.
+1. `Name + INN + KPP`;
+2. `INN + KPP`;
+3. уникальному `INN`.
 
-Основная browser-session каталога не используется, поэтому её пагинация не сбрасывается.
+Основной catalog browser при этом не теряет пагинацию.
 
-## 2. Worker pool
+## 2. Discovery опубликованных форм
 
-Все `OrganizationReference` попадают в thread-safe queue.
-
-Каждый worker:
-
-1. создаёт отдельный ChromeDriver;
-2. обрабатывает несколько организаций;
-3. никогда не делит driver с другим worker;
-4. сначала пробует direct URL, затем click fallback;
-5. закрывает driver после опустошения очереди.
-
-По умолчанию: 3 worker'а. Ограничение UI: 1–6.
-
-## 3. Карточка организации
-
-После открытия карточки worker получает `PageSource`.
-
-В `ASPxGridViewDet` выбирается **только** строка:
-
-- № формы: `4.1.1`;
-- название: `Общая информация об организации`.
-
-Из `.get_template` извлекается URL первого аргумента:
+`EiasOrganizationPageReader` не кликает jQuery dialog. Из `ASPxGridViewDet` извлекаются все ссылки вида:
 
 ```text
-openTemplateDialog('https://ri-loader.eias.ru/TemplatePrinter.aspx?...', '...')
+openTemplateDialog('https://ri-loader.eias.ru/TemplatePrinter.aspx?...', ...)
 ```
 
-Модальное окно и iframe не используются.
+Кандидаты сортируются по приоритету:
 
-## 4. TemplatePrinter
+1. `4.1.1 — Общая информация об организации`;
+2. `1.0.1 — Основные параметры раскрываемой информации`;
+3. остальные опубликованные workbook.
 
-Worker переходит непосредственно на `TemplatePrinter.aspx`.
+Это важно: один TemplatePrinter workbook может содержать сразу несколько Excel-листов, поэтому отсутствие отдельной строки 4.1.1 в карточке больше не означает, что лист 4.1.1 физически отсутствует в workbook.
 
-`EiasForm411Parser` ищет таблицу с заголовком `Форма 4.1.1 Общая информация об организации`.
-Клики по вкладкам workbook не нужны: HTML листа уже присутствует в DOM.
+## 3. Workbook parsing
 
-Парсер работает по стабильным кодам параметров (`2.1`, `2.2`, `3.3`, `7.1`, `9`...), а не по HTML-id строк.
+`EiasTemplateWorkbookParser` получает HTML TemplatePrinter и одним проходом ищет:
 
-## 5. Производительность
+- `Форма 4.1.1` — контакты, руководитель, адреса, сайт;
+- `Форма 1.0.1` — дата раскрытия, инфраструктурная система, вид деятельности, территория.
 
-Catalog phase остаётся однопоточной из-за stateful DevExpress pagination.
-Details phase параллельна.
+Переключать вкладки workbook в Selenium не нужно: HTML листов уже присутствует в документе.
 
-Организации с direct URL — самый быстрый путь.
-Организации без row key требуют дополнительного открытия каталога и перехода к `SourcePage`, поэтому обрабатываются медленнее, но параллельно и без разрушения основного состояния списка.
+## 4. Partial result
 
-Рекомендуемый старт: 3 workers. Для мощной машины и стабильного ЕИАС можно протестировать 4, но не стоит без необходимости создавать много одновременных Chrome-сессий.
+Если найден только 1.0.1:
 
-## 6. Failure isolation
+```text
+OrganizationDetailsResult.IsSuccess = true
+OrganizationDetailsResult.IsPartial = true
+UI status = "Частично"
+```
 
-Ошибка одной организации не останавливает очередь.
+Это лучше, чем терять всю организацию из-за отсутствующей контактной формы.
 
-Если worker получает `WebDriverException`, его browser session закрывается; следующая организация создаст новую session.
+## 5. Data quality
+
+Парсер не доверяет значениям вслепую. Например, код `9` формы 4.1.1 должен быть email. Если там URL или служебное значение, поле `Email` остаётся пустым, а в `Warnings` добавляется диагностическое сообщение.
+
+## 6. Parallel workers
+
+Catalog phase последовательна. Details phase использует независимые ChromeDriver-сессии:
+
+```text
+OrganizationReference[]
+        ↓
+ConcurrentQueue
+   ↙    ↓    ↘
+W1     W2     W3
+Chrome Chrome Chrome
+```
+
+Один `IWebDriver` не делится между потоками. Worker создаёт browser один раз и переиспользует его для нескольких организаций.
+
+## 7. Telemetry
+
+Каждый подэтап публикует telemetry:
+
+- navigation/fallback;
+- form discovery;
+- TemplatePrinter load;
+- parse 4.1.1;
+- parse 1.0.1;
+- data-quality warning;
+- completion.
+
+События имеют `Code` и `DataSource`, поэтому ошибки можно агрегировать по причине, а не только читать текстом.

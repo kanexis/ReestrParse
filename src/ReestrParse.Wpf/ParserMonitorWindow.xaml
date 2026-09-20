@@ -81,6 +81,8 @@
           <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11">
             <Run Text="OK " />
             <Run Text="{Binding SucceededItems, Mode=OneWay}" />
+            <Run Text=" · PART " />
+            <Run Text="{Binding PartialItems, Mode=OneWay}" />
             <Run Text=" · ERR " />
             <Run Text="{Binding FailedItems, Mode=OneWay}" />
           </TextBlock>
@@ -185,7 +187,7 @@
 
         <TextBox Grid.Column="2"
                  Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                 ToolTip="Поиск по операции, организации, ИНН или сообщению" />
+                 ToolTip="Поиск по операции, организации, ИНН, коду ошибки, источнику или сообщению" />
       </Grid>
 
       <Border Grid.Row="2"
@@ -214,6 +216,8 @@
             <DataGridTextColumn Header="Время" Binding="{Binding Duration}" Width="85" />
             <DataGridTextColumn Header="Организация" Binding="{Binding Organization}" Width="260" />
             <DataGridTextColumn Header="ИНН" Binding="{Binding Inn}" Width="115" />
+            <DataGridTextColumn Header="Код" Binding="{Binding Code}" Width="175" />
+            <DataGridTextColumn Header="Источник" Binding="{Binding DataSource}" Width="130" />
             <DataGridTextColumn Header="Сообщение" Binding="{Binding Message}" Width="*" />
             <DataGridTextColumn Header="Ошибка" Binding="{Binding Error}" Width="260" />
           </DataGrid.Columns>

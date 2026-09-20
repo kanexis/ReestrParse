@@ -58,4 +58,26 @@ public sealed class EiasForm411ParserTests
         Assert.Equal("(4112)211749", result.ResponsiblePhone);
         Assert.Equal("NataliAlex8@mail.ru", result.ResponsibleEmail);
     }
+
+    [Fact]
+    public void Parse_DoesNotTreatUrlAsOrganizationEmail()
+    {
+        const string html = """
+            <div id="sheets"><div><table>
+              <tr><td class="row-number">2</td><td colspan="4">Форма 4.1.1 Общая информация об организации1</td></tr>
+              <tr><td class="row-number">5</td><td>2.1</td><td>Наименование</td><td>ООО Тест</td><td></td></tr>
+              <tr><td class="row-number">6</td><td>2.2</td><td>ИНН</td><td>1234567890</td><td></td></tr>
+              <tr><td class="row-number">7</td><td>9</td><td>Email</td><td>portal.eias.ru/Portal/DownloadPage.aspx?guid=abc</td><td></td></tr>
+            </table></div></div>
+            """;
+
+        var source = new OrganizationReference(
+            "", "ООО Тест", "1234567890", "", "Алтайский край",
+            "Теплоснабжение", null, 1);
+
+        var result = EiasForm411Parser.Parse(html, source, "https://detail", "https://template");
+
+        Assert.Equal(string.Empty, result.Email);
+        Assert.Contains(result.DataWarnings, x => x.Contains("Код 9", StringComparison.OrdinalIgnoreCase));
+    }
 }

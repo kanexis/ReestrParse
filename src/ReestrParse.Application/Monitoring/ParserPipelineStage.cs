@@ -10,9 +10,13 @@ public enum ParserPipelineStage
     CatalogCompleted = 5,
     DetailsQueue = 6,
     DetailsNavigation = 7,
-    DetailsForm411 = 8,
-    DetailsCompleted = 9,
-    Completed = 10,
-    Cancelled = 11,
-    Failed = 12
+    DetailsFormDiscovery = 8,
+    DetailsTemplate = 9,
+    DetailsForm411 = 10,
+    DetailsForm101 = 11,
+    DetailsDataQuality = 12,
+    DetailsCompleted = 13,
+    Completed = 14,
+    Cancelled = 15,
+    Failed = 16
 }

@@ -6,9 +6,8 @@ using ReestrParse.Domain.Organizations;
 namespace ReestrParse.Infrastructure.Selenium.Eias.Details;
 
 /// <summary>
-/// Парсер HTML-представления workbook из TemplatePrinter. Лист 4.1.1 определяется
-/// по заголовку формы; клики по вкладкам листов не требуются, потому что данные уже
-/// присутствуют в DOM.
+/// Парсер формы 4.1.1. Контакты читаются по стабильным кодам параметров,
+/// а не по физическим номерам строк Excel/HTML.
 /// </summary>
 internal static partial class EiasForm411Parser
 {
@@ -23,19 +22,49 @@ internal static partial class EiasForm411Parser
 
         var parser = new HtmlParser();
         var document = parser.ParseDocument(html);
-        var formTable = FindForm411Table(document)
+        var formTable = FindTable(document)
             ?? throw new InvalidOperationException("В TemplatePrinter не найден лист «Форма 4.1.1».");
 
-        var values = ReadParameters(formTable);
+        return ParseTable(formTable, source, detailUrl, templateUrl);
+    }
 
-        var name = First(values, "2.1", source.Name);
-        var inn = First(values, "2.2", source.Inn);
-        var kpp = First(values, "2.3", source.Kpp);
+    public static IElement? FindTable(IDocument document)
+        => EiasFormTableReader.FindTable(
+            document,
+            "Форма 4.1.1",
+            "Общая информация об организации");
 
-        var phones = All(values, "7.1")
-            .Where(IsMeaningful)
+    public static OrganizationContactDetails ParseTable(
+        IElement formTable,
+        OrganizationReference source,
+        string detailUrl,
+        string templateUrl)
+    {
+        var values = EiasFormTableReader.ReadParameters(formTable);
+        var warnings = new List<string>();
+
+        var name = EiasFormTableReader.First(values, "2.1", source.Name);
+        var inn = EiasFormTableReader.First(values, "2.2", source.Inn);
+        var kpp = EiasFormTableReader.First(values, "2.3", source.Kpp);
+
+        var phones = EiasFormTableReader.All(values, "7.1")
+            .Select(EiasFormTableReader.Normalize)
+            .Where(EiasFormTableReader.IsMeaningful)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+        if (phones.Length == 0)
+            warnings.Add("В форме 4.1.1 отсутствует код 7.1 с контактным телефоном организации.");
+
+        var emailRaw = EiasFormTableReader.First(values, "9");
+        var email = ExtractEmail(emailRaw);
+        if (EiasFormTableReader.IsMeaningful(emailRaw) && string.IsNullOrWhiteSpace(email))
+            warnings.Add($"Код 9 содержит значение, не похожее на email: «{emailRaw}».");
+
+        var responsibleEmailRaw = EiasFormTableReader.First(values, "3.4");
+        var responsibleEmail = ExtractEmail(responsibleEmailRaw);
+        if (EiasFormTableReader.IsMeaningful(responsibleEmailRaw) && string.IsNullOrWhiteSpace(responsibleEmail))
+            warnings.Add($"Код 3.4 содержит значение, не похожее на email: «{responsibleEmailRaw}».");
 
         return new OrganizationContactDetails(
             OrganizationId: source.OrganizationId,
@@ -43,128 +72,40 @@ internal static partial class EiasForm411Parser
             Inn: inn,
             Kpp: kpp,
             Phones: phones,
-            Email: First(values, "9"),
-            Website: First(values, "8"),
+            Email: email,
+            Website: EiasFormTableReader.First(values, "8"),
             ResponsibleFullName: JoinName(
-                First(values, "3.1.1"),
-                First(values, "3.1.2"),
-                First(values, "3.1.3")),
-            ResponsiblePosition: First(values, "3.2"),
-            ResponsiblePhone: First(values, "3.3"),
-            ResponsibleEmail: First(values, "3.4"),
+                EiasFormTableReader.First(values, "3.1.1"),
+                EiasFormTableReader.First(values, "3.1.2"),
+                EiasFormTableReader.First(values, "3.1.3")),
+            ResponsiblePosition: EiasFormTableReader.First(values, "3.2"),
+            ResponsiblePhone: EiasFormTableReader.First(values, "3.3"),
+            ResponsibleEmail: responsibleEmail,
             ManagerFullName: JoinName(
-                First(values, "4.1"),
-                First(values, "4.2"),
-                First(values, "4.3")),
-            PostalAddress: First(values, "5"),
-            LocationAddress: First(values, "6"),
+                EiasFormTableReader.First(values, "4.1"),
+                EiasFormTableReader.First(values, "4.2"),
+                EiasFormTableReader.First(values, "4.3")),
+            PostalAddress: EiasFormTableReader.First(values, "5"),
+            LocationAddress: EiasFormTableReader.First(values, "6"),
             DetailUrl: detailUrl,
-            TemplateUrl: templateUrl);
-    }
-
-    private static IElement? FindForm411Table(IDocument document)
-    {
-        foreach (var cell in document.QuerySelectorAll("td"))
-        {
-            var text = Normalize(cell.TextContent);
-            if (!text.Contains("Форма 4.1.1", StringComparison.OrdinalIgnoreCase) ||
-                !text.Contains("Общая информация об организации", StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            IElement? current = cell;
-            while (current is not null)
-            {
-                if (string.Equals(current.LocalName, "table", StringComparison.OrdinalIgnoreCase))
-                    return current;
-
-                current = current.ParentElement;
-            }
-        }
-
-        return null;
-    }
-
-    private static Dictionary<string, List<string>> ReadParameters(IElement table)
-    {
-        var result = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var row in table.QuerySelectorAll("tr"))
-        {
-            var cells = row.Children
-                .Where(x => string.Equals(x.LocalName, "td", StringComparison.OrdinalIgnoreCase))
-                .Where(x => !x.ClassList.Contains("row-number"))
-                .ToArray();
-
-            if (cells.Length < 3)
-                continue;
-
-            var code = Normalize(cells[0].TextContent);
-            if (!ParameterCodeRegex().IsMatch(code))
-                continue;
-
-            var value = Normalize(cells[2].TextContent);
-            if (!result.TryGetValue(code, out var bucket))
-            {
-                bucket = [];
-                result[code] = bucket;
-            }
-
-            if (!string.IsNullOrWhiteSpace(value))
-                bucket.Add(value);
-        }
-
-        return result;
-    }
-
-    private static string First(
-        IReadOnlyDictionary<string, List<string>> values,
-        string code,
-        string fallback = "")
-    {
-        if (values.TryGetValue(code, out var items))
-        {
-            var value = items.FirstOrDefault(IsMeaningful);
-            if (!string.IsNullOrWhiteSpace(value))
-                return value;
-        }
-
-        return fallback;
-    }
-
-    private static IReadOnlyList<string> All(
-        IReadOnlyDictionary<string, List<string>> values,
-        string code)
-        => values.TryGetValue(code, out var items) ? items : [];
-
-    private static bool IsMeaningful(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-            return false;
-
-        var normalized = Normalize(value);
-        return normalized.Length > 0 &&
-               !string.Equals(normalized, "x", StringComparison.OrdinalIgnoreCase) &&
-               !string.Equals(normalized, "отсутствует", StringComparison.OrdinalIgnoreCase) &&
-               !string.Equals(normalized, "не указано", StringComparison.OrdinalIgnoreCase);
+            TemplateUrl: templateUrl,
+            HasForm411: true,
+            Warnings: warnings);
     }
 
     private static string JoinName(params string[] parts)
-        => string.Join(" ", parts.Where(IsMeaningful));
+        => string.Join(" ", parts.Where(EiasFormTableReader.IsMeaningful));
 
-    private static string Normalize(string? value)
+    private static string ExtractEmail(string? value)
     {
-        if (string.IsNullOrWhiteSpace(value))
+        if (!EiasFormTableReader.IsMeaningful(value))
             return string.Empty;
 
-        return string.Join(" ", value
-            .Replace('\u00A0', ' ')
-            .Split(
-                (char[]?)null,
-                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        var normalized = EiasFormTableReader.Normalize(value);
+        var match = EmailRegex().Match(normalized);
+        return match.Success ? match.Groups["email"].Value : string.Empty;
     }
 
-    [GeneratedRegex(@"^\d+(?:\.\d+)*$")]
-    private static partial Regex ParameterCodeRegex();
+    [GeneratedRegex(@"(?<email>[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,})", RegexOptions.IgnoreCase)]
+    private static partial Regex EmailRegex();
 }

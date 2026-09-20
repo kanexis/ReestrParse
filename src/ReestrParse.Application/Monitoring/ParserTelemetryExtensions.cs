@@ -15,8 +15,11 @@ public static class ParserTelemetryExtensions
         int? totalItems = null,
         int? succeeded = null,
         int? failed = null,
+        int? partial = null,
         string? organizationName = null,
-        string? inn = null)
+        string? inn = null,
+        string? code = null,
+        string? dataSource = null)
         => telemetry.Publish(new ParserTelemetryEvent(
             DateTimeOffset.Now,
             ParserLogLevel.Info,
@@ -31,8 +34,12 @@ public static class ParserTelemetryExtensions
             totalItems,
             succeeded,
             failed,
+            partial,
             organizationName,
-            inn));
+            inn,
+            null,
+            code,
+            dataSource));
 
     public static void Success(
         this IParserTelemetry telemetry,
@@ -47,8 +54,11 @@ public static class ParserTelemetryExtensions
         int? totalItems = null,
         int? succeeded = null,
         int? failed = null,
+        int? partial = null,
         string? organizationName = null,
-        string? inn = null)
+        string? inn = null,
+        string? code = null,
+        string? dataSource = null)
         => telemetry.Publish(new ParserTelemetryEvent(
             DateTimeOffset.Now,
             ParserLogLevel.Success,
@@ -63,8 +73,12 @@ public static class ParserTelemetryExtensions
             totalItems,
             succeeded,
             failed,
+            partial,
             organizationName,
-            inn));
+            inn,
+            null,
+            code,
+            dataSource));
 
     public static void Warning(
         this IParserTelemetry telemetry,
@@ -79,9 +93,12 @@ public static class ParserTelemetryExtensions
         int? totalItems = null,
         int? succeeded = null,
         int? failed = null,
+        int? partial = null,
         string? organizationName = null,
         string? inn = null,
-        string? error = null)
+        string? error = null,
+        string? code = null,
+        string? dataSource = null)
         => telemetry.Publish(new ParserTelemetryEvent(
             DateTimeOffset.Now,
             ParserLogLevel.Warning,
@@ -96,9 +113,12 @@ public static class ParserTelemetryExtensions
             totalItems,
             succeeded,
             failed,
+            partial,
             organizationName,
             inn,
-            error));
+            error,
+            code,
+            dataSource));
 
     public static void Error(
         this IParserTelemetry telemetry,
@@ -114,9 +134,12 @@ public static class ParserTelemetryExtensions
         int? totalItems = null,
         int? succeeded = null,
         int? failed = null,
+        int? partial = null,
         string? organizationName = null,
         string? inn = null,
-        string? error = null)
+        string? error = null,
+        string? code = null,
+        string? dataSource = null)
         => telemetry.Publish(new ParserTelemetryEvent(
             DateTimeOffset.Now,
             ParserLogLevel.Error,
@@ -131,7 +154,10 @@ public static class ParserTelemetryExtensions
             totalItems,
             succeeded,
             failed,
+            partial,
             organizationName,
             inn,
-            error ?? exception?.Message));
+            error ?? exception?.Message,
+            code,
+            dataSource));
 }

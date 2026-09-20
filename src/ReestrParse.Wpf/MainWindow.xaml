@@ -94,7 +94,7 @@
                 <TextBlock Text="3" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
               <StackPanel Margin="10,0,0,0">
-                <TextBlock Text="Контакты 4.1.1" Foreground="#CBD5E1" />
+                <TextBlock Text="Карточки / формы" Foreground="#CBD5E1" />
                 <TextBlock Text="{Binding ContactsStepStatus}" Foreground="#64748B" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="170" />
               </StackPanel>
             </StackPanel>
@@ -116,7 +116,7 @@
                 <TextBlock Text="4" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
               <StackPanel Margin="10,0,0,0">
-                <TextBlock Text="Экспорт" Foreground="#CBD5E1" />
+                <TextBlock Text="Результат" Foreground="#CBD5E1" />
                 <TextBlock Text="{Binding ExportStepStatus}" Foreground="#64748B" FontSize="11" />
               </StackPanel>
             </StackPanel>
@@ -150,7 +150,7 @@
                      FontSize="28"
                      FontWeight="SemiBold"
                      Foreground="{StaticResource TextBrush}" />
-          <TextBlock Text="Сначала собираем каталог по региону, затем параллельно читаем только форму 4.1.1 каждой организации."
+          <TextBlock Text="Сначала собираем каталог, затем параллельно читаем карточки, форму 4.1.1 и дополнительную форму 1.0.1."
                      Foreground="{StaticResource MutedBrush}"
                      FontSize="13"
                      Margin="0,7,0,0" />
@@ -220,7 +220,7 @@
                         IsChecked="{Binding HeadlessDetails}"
                         VerticalAlignment="Center"
                         Margin="0,0,12,0" />
-              <Button Content="2. Загрузить контакты 4.1.1"
+              <Button Content="2. Загрузить данные форм"
                       Command="{Binding LoadContactsCommand}"
                       Background="#0F766E"
                       Foreground="White" />
@@ -251,13 +251,13 @@
               <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="12">
                 <Run Text="Всего: " />
                 <Run Text="{Binding Organizations.Count, Mode=OneWay}" FontWeight="SemiBold" />
-                <Run Text=" · контакты заполняются по мере завершения workers" />
+                <Run Text=" · данные форм заполняются по мере завершения workers" />
               </TextBlock>
             </StackPanel>
 
             <TextBox Grid.Column="1"
                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                     ToolTip="Поиск по названию, ИНН, КПП, телефону, email или ответственному лицу"
+                     ToolTip="Поиск по названию, ИНН, КПП, контактам, формам, системам и территориям"
                      VerticalAlignment="Center" />
           </Grid>
 
@@ -274,7 +274,56 @@
                     FrozenColumnCount="1"
                     Margin="1"
                     EnableRowVirtualization="True"
-                    EnableColumnVirtualization="True">
+                    EnableColumnVirtualization="True"
+                    RowDetailsVisibilityMode="VisibleWhenSelected">
+            <DataGrid.RowDetailsTemplate>
+              <DataTemplate>
+                <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="0,1,0,1" Padding="18,12">
+                  <Grid>
+                    <Grid.ColumnDefinitions>
+                      <ColumnDefinition Width="220" />
+                      <ColumnDefinition Width="*" />
+                      <ColumnDefinition Width="220" />
+                      <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                      <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="Распознано форм" Foreground="#64748B" FontSize="11" />
+                    <TextBlock Grid.Column="1" Text="{Binding ParsedForms}" FontWeight="SemiBold" />
+                    <TextBlock Grid.Column="2" Text="Дата раскрытия" Foreground="#64748B" FontSize="11" />
+                    <TextBlock Grid.Column="3" Text="{Binding DisclosureUpdatedAt}" />
+
+                    <TextBlock Grid.Row="1" Text="Сайт" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Website}" TextWrapping="Wrap" Margin="0,7,12,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Должность ответственного" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding ResponsiblePosition}" TextWrapping="Wrap" Margin="0,7,0,0" />
+
+                    <TextBlock Grid.Row="2" Text="Почтовый адрес" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PostalAddress}" TextWrapping="Wrap" Margin="0,7,12,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Адрес местонахождения" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding LocationAddress}" TextWrapping="Wrap" Margin="0,7,0,0" />
+
+                    <TextBlock Grid.Row="3" Text="Системы инфраструктуры" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding InfrastructureSystems}" TextWrapping="Wrap" Margin="0,7,12,0" />
+                    <TextBlock Grid.Row="3" Grid.Column="2" Text="Виды деятельности" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding RegulatedActivities}" TextWrapping="Wrap" Margin="0,7,0,0" />
+
+                    <TextBlock Grid.Row="4" Text="Территория оказания услуг" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding ServiceTerritory}" TextWrapping="Wrap" Margin="0,7,0,0" />
+
+                    <TextBlock Grid.Row="5" Text="Диагностика данных" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding DataWarnings}" TextWrapping="Wrap" Foreground="#92400E" Margin="0,7,0,0" />
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </DataGrid.RowDetailsTemplate>
             <DataGrid.Columns>
               <DataGridTextColumn Header="Организация" Binding="{Binding Name}" Width="310" />
               <DataGridTextColumn Header="ИНН" Binding="{Binding Inn}" Width="120" />

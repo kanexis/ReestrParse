@@ -65,6 +65,9 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
     private int failedItems;
 
     [ObservableProperty]
+    private int partialItems;
+
+    [ObservableProperty]
     private int activeWorkers;
 
     [ObservableProperty]
@@ -126,7 +129,9 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
         return log.Message.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
                log.Organization.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
                log.Inn.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
-               log.Operation.Contains(SearchText, StringComparison.OrdinalIgnoreCase);
+               log.Operation.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+               log.Code.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
+               log.DataSource.Contains(SearchText, StringComparison.OrdinalIgnoreCase);
     }
 
     private void OnPublished(ParserTelemetryEvent evt)
@@ -173,6 +178,9 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
 
         if (evt.Failed.HasValue)
             FailedItems = evt.Failed.Value;
+
+        if (evt.Partial.HasValue)
+            PartialItems = evt.Partial.Value;
 
         if (evt.Page is > 0)
             CurrentPage = evt.Page.Value;
@@ -290,6 +298,7 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
         CompletedItems = 0;
         SucceededItems = 0;
         FailedItems = 0;
+        PartialItems = 0;
         ActiveWorkers = 0;
         CurrentPage = 0;
         TotalPages = 0;
@@ -319,7 +328,7 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
             return;
 
         using var writer = new StreamWriter(dialog.FileName, false, new System.Text.UTF8Encoding(true));
-        writer.WriteLine("Time;Level;Stage;Operation;Worker;SourcePage;Position;Duration;Organization;INN;Message;Error");
+        writer.WriteLine("Time;Level;Stage;Operation;Worker;SourcePage;Position;Duration;Organization;INN;Code;DataSource;Message;Error");
 
         foreach (var log in Logs)
         {
@@ -334,6 +343,8 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
                 Csv(log.Duration),
                 Csv(log.Organization),
                 Csv(log.Inn),
+                Csv(log.Code),
+                Csv(log.DataSource),
                 Csv(log.Message),
                 Csv(log.Error)));
         }
@@ -351,8 +362,12 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
         ParserPipelineStage.CatalogCompleted => "Каталог готов",
         ParserPipelineStage.DetailsQueue => "Очередь карточек",
         ParserPipelineStage.DetailsNavigation => "Карточки организаций",
+        ParserPipelineStage.DetailsFormDiscovery => "Поиск форм",
+        ParserPipelineStage.DetailsTemplate => "TemplatePrinter",
         ParserPipelineStage.DetailsForm411 => "Форма 4.1.1",
-        ParserPipelineStage.DetailsCompleted => "Контакты готовы",
+        ParserPipelineStage.DetailsForm101 => "Форма 1.0.1",
+        ParserPipelineStage.DetailsDataQuality => "Проверка данных",
+        ParserPipelineStage.DetailsCompleted => "Данные готовы",
         ParserPipelineStage.Completed => "Завершено",
         ParserPipelineStage.Cancelled => "Отменено",
         ParserPipelineStage.Failed => "Ошибка",
