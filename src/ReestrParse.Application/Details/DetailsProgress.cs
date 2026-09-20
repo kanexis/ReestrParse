@@ -9,7 +9,10 @@ public sealed record DetailsProgress(
     int Failed,
     OrganizationReference Organization,
     OrganizationContactDetails? Details,
-    string? Error)
+    string? Error,
+    int WorkerId = 0,
+    TimeSpan? Duration = null,
+    string Step = "")
 {
     public string Message => Error is null
         ? $"[{Completed}/{Total}] {Organization.Name} — контакты получены"

@@ -1,5 +1,24 @@
 # Changelog
 
+## v0.7 — parser monitoring & pipeline UX
+
+### Added
+
+- Отдельное WPF-окно `ParserMonitorWindow`, чтобы подробные runtime-данные не раздували основную таблицу организаций.
+- Единый `IParserTelemetry` / `ParserTelemetryHub` для событий каталога и details workers.
+- Стадии pipeline: регионы, навигация/фильтры/страницы каталога, очередь workers, карточка организации, форма 4.1.1, завершение/ошибка/отмена.
+- Замеры времени для каждой страницы каталога и каждой организации.
+- Детальные timings внутри организации: получение карточки, fallback click, извлечение ссылки 4.1.1, загрузка TemplatePrinter и HTML parse.
+- Общий progress, `processed/total`, `OK/ERR`, active workers, elapsed time, ETA, среднее время на организацию и throughput `орг/мин`.
+- Фильтруемый журнал по уровню и тексту, последняя ошибка и экспорт логов в CSV/TXT.
+- Кнопка `Мониторинг / логи` в главном окне.
+
+### Changed
+
+- Sidebar pipeline главного окна теперь реагирует на реальные telemetry stages, а не только на нажатие пользовательских команд.
+- Details workers публикуют worker id, исходную страницу каталога, организацию, ИНН, длительность и итоговые счётчики.
+- Версия проекта повышена до `0.7.0`; repository description обновлено под monitoring/telemetry pipeline.
+
 ## 0.5.0 — contacts pipeline
 
 ### Added

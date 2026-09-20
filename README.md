@@ -8,6 +8,8 @@
 ![AngleSharp](https://img.shields.io/badge/AngleSharp-1.8.1-6C63FF)
 ![Architecture](https://img.shields.io/badge/architecture-layered-111827)
 
+> **v0.7:** добавлен отдельный монитор парсера: live pipeline stages, общий progress, page/item timings, worker activity, ETA, throughput, фильтруемый журнал ошибок/событий и CSV export логов.
+
 > **v0.6:** для каталогов, где DevExpress не отдаёт `orgId`, добавлен fallback через реальный клик строки в отдельной Selenium worker-session.
 
 ## Что умеет проект
@@ -139,7 +141,14 @@ MVVM-интерфейс оператора:
 - фоновые Chrome для details phase;
 - live-progress;
 - поиск по организации, ИНН, КПП, телефону, email и ответственному лицу;
-- контактные данные прямо в таблице.
+- контактные данные прямо в таблице;
+- отдельное окно **«Мониторинг / логи»**, не расширяющее основной DataGrid;
+- live progress по страницам и организациям;
+- elapsed / ETA / среднее время на организацию / throughput;
+- состояние workers, текущая организация и страница каталога;
+- подробные step timings: карточка → поиск 4.1.1 → TemplatePrinter → HTML parse;
+- фильтрация журнала по уровню и тексту;
+- экспорт runtime-лога в CSV/TXT.
 
 ## Технологии
 
@@ -154,6 +163,7 @@ MVVM-интерфейс оператора:
 | Microsoft.Extensions.Hosting 10.0.12 | DI и lifecycle приложения |
 | xUnit | Unit tests парсеров |
 | GitHub Actions | Windows CI: restore → build → test |
+| `System.Diagnostics.Stopwatch` + in-process telemetry hub | Замеры времени операций, ETA и производительности без внешнего logging framework |
 
 Версии NuGet централизованы в `Directory.Packages.props`.
 
@@ -216,6 +226,8 @@ docs/
 - [x] Поиск только формы 4.1.1
 - [x] Парсинг TemplatePrinter без кликов по Excel-вкладкам
 - [x] Parallel Selenium worker pool для контактных данных
+- [x] Отдельное окно мониторинга pipeline / timings / errors / workers
+- [x] CSV export runtime-логов
 - [ ] Excel export из текущей модели данных
 - [ ] Checkpoint/resume
 - [ ] EF Core persistence

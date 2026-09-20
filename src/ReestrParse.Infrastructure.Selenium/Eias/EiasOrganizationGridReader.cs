@@ -1,7 +1,9 @@
+using System.Diagnostics;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
 using OpenQA.Selenium;
 using ReestrParse.Application.Catalog;
+using ReestrParse.Application.Monitoring;
 using ReestrParse.Domain.Catalog;
 using ReestrParse.Domain.Organizations;
 
@@ -10,8 +12,7 @@ namespace ReestrParse.Infrastructure.Selenium.Eias;
 /// <summary>
 /// Читает весь актуальный ASPxGridView2 постранично.
 /// Строки берутся из outerHTML только текущей отрисованной таблицы, а количество
-/// страниц — из текущего отрисованного pager. Старые скрытые DevExpress-узлы
-/// после фильтрации не участвуют в расчётах.
+/// страниц — из текущего отрисованного pager.
 /// </summary>
 internal static class EiasOrganizationGridReader
 {
@@ -20,15 +21,20 @@ internal static class EiasOrganizationGridReader
         RegionOption region,
         SphereOption sphere,
         IProgress<CatalogProgress>? progress,
+        IParserTelemetry telemetry,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         var collected = new Dictionary<string, OrganizationReference>(StringComparer.OrdinalIgnoreCase);
 
+        var pageSw = Stopwatch.StartNew();
         var firstPage = ReadCurrentPage(driver, region, sphere, cancellationToken);
+        pageSw.Stop();
+
         AddPage(collected, firstPage.Organizations);
-        Report(progress, firstPage, collected.Count);
+        Report(progress, firstPage, collected.Count, pageSw.Elapsed);
+        ReportTelemetry(telemetry, firstPage, collected.Count, pageSw.Elapsed);
 
         var totalPages = firstPage.TotalPages;
         var totalRows = firstPage.TotalRows;
@@ -40,9 +46,6 @@ internal static class EiasOrganizationGridReader
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Перед каждым переходом перепроверяем именно живой видимый pager.
-            // Если после фильтра сайт показывает только 3 страницы, попытки 4..8
-            // физически не будут запускаться даже при наличии старого скрытого pager.
             var liveBefore = EiasLivePager.Read(driver);
             totalPages = Math.Min(totalPages, liveBefore.TotalPages);
 
@@ -53,11 +56,32 @@ internal static class EiasOrganizationGridReader
                 "Пагинация",
                 targetPage,
                 collected.Count,
-                $"Переходим на страницу {targetPage} из {totalPages}..."));
+                $"Переходим на страницу {targetPage} из {totalPages}...",
+                totalPages,
+                totalRows));
+
+            var navigationSw = Stopwatch.StartNew();
+            telemetry.Info(
+                ParserPipelineStage.CatalogPages,
+                "Page navigation started",
+                $"Переход на страницу {targetPage} из {totalPages}.",
+                page: targetPage,
+                totalPages: totalPages);
 
             EiasPagerNavigator.GoToPage(driver, targetPage, cancellationToken);
+            navigationSw.Stop();
 
+            telemetry.Success(
+                ParserPipelineStage.CatalogPages,
+                "Page navigation completed",
+                $"Страница {targetPage} открыта.",
+                navigationSw.Elapsed,
+                page: targetPage,
+                totalPages: totalPages);
+
+            pageSw.Restart();
             var page = ReadCurrentPage(driver, region, sphere, cancellationToken);
+            pageSw.Stop();
 
             if (page.CurrentPage != targetPage)
             {
@@ -66,25 +90,38 @@ internal static class EiasOrganizationGridReader
                     $"Состояние pager: {EiasLivePager.Read(driver).Summary}");
             }
 
-            // Состояние pager может уточниться после callback.
             totalPages = Math.Min(totalPages, page.TotalPages);
             if (page.TotalRows > 0)
                 totalRows = page.TotalRows;
 
             AddPage(collected, page.Organizations);
-            Report(progress, page, collected.Count);
+            Report(progress, page, collected.Count, pageSw.Elapsed);
+            ReportTelemetry(telemetry, page, collected.Count, pageSw.Elapsed);
             lastPageRead = page.CurrentPage;
         }
+
+        var message = totalRows > 0
+            ? $"Получено {collected.Count} уникальных организаций из {totalRows} строк сайта. " +
+              $"Пройдено страниц: {lastPageRead} из {totalPages}."
+            : $"Получено {collected.Count} уникальных организаций. " +
+              $"Пройдено страниц: {lastPageRead} из {totalPages}.";
 
         progress?.Report(new CatalogProgress(
             "Каталог собран",
             lastPageRead,
             collected.Count,
-            totalRows > 0
-                ? $"Получено {collected.Count} уникальных организаций из {totalRows} строк сайта. " +
-                  $"Пройдено страниц: {lastPageRead} из {totalPages}."
-                : $"Получено {collected.Count} уникальных организаций. " +
-                  $"Пройдено страниц: {lastPageRead} из {totalPages}."));
+            message,
+            totalPages,
+            totalRows));
+
+        telemetry.Success(
+            ParserPipelineStage.CatalogCompleted,
+            "Catalog pages completed",
+            message,
+            page: lastPageRead,
+            totalPages: totalPages,
+            itemIndex: collected.Count,
+            totalItems: totalRows > 0 ? totalRows : collected.Count);
 
         return collected.Values
             .OrderBy(x => x.Name, StringComparer.CurrentCultureIgnoreCase)
@@ -177,7 +214,6 @@ internal static class EiasOrganizationGridReader
             organizations);
     }
 
-
     private static int ReadLocalRowIndex(IElement row, int fallbackIndex)
     {
         var id = row.Id ?? string.Empty;
@@ -259,7 +295,8 @@ internal static class EiasOrganizationGridReader
     private static void Report(
         IProgress<CatalogProgress>? progress,
         PageResult page,
-        int collectedCount)
+        int collectedCount,
+        TimeSpan duration)
     {
         progress?.Report(new CatalogProgress(
             "Чтение организаций",
@@ -267,7 +304,27 @@ internal static class EiasOrganizationGridReader
             collectedCount,
             $"Страница {page.CurrentPage} из {page.TotalPages}: " +
             $"прочитано {page.Organizations.Count}, всего собрано {collectedCount}" +
-            (page.TotalRows > 0 ? $" из {page.TotalRows}." : ".")));
+            (page.TotalRows > 0 ? $" из {page.TotalRows}." : "."),
+            page.TotalPages,
+            page.TotalRows,
+            duration));
+    }
+
+    private static void ReportTelemetry(
+        IParserTelemetry telemetry,
+        PageResult page,
+        int collectedCount,
+        TimeSpan duration)
+    {
+        telemetry.Success(
+            ParserPipelineStage.CatalogPages,
+            "Page parsed",
+            $"Страница {page.CurrentPage}: прочитано {page.Organizations.Count} организаций; накоплено {collectedCount}.",
+            duration,
+            page: page.CurrentPage,
+            totalPages: page.TotalPages,
+            itemIndex: collectedCount,
+            totalItems: page.TotalRows > 0 ? page.TotalRows : null);
     }
 
     private static string Normalize(string? value)

@@ -2,11 +2,11 @@
 
 ## Suggested description
 
-WPF + Selenium crawler for ФГИС ЕИАС: region catalogs, DevExpress pagination, parallel organization details, form 4.1.1 contacts and resilient click fallback.
+WPF + Selenium crawler for ФГИС ЕИАС: full regional catalogs, DevExpress pagination, parallel Form 4.1.1 contacts, resilient click fallback, live telemetry, timings and operator monitoring UI.
 
 ## Короткое описание на русском
 
-WPF-приложение для сбора реестра регулируемых организаций ФГИС ЕИАС и контактных данных из формы 4.1.1 с Selenium, DevExpress pagination и параллельными worker-сессиями.
+WPF-приложение для сбора реестра организаций ФГИС ЕИАС и контактов формы 4.1.1: Selenium, DevExpress pagination, parallel workers, live progress, telemetry, timings и отдельный монитор логов.
 
 ## Suggested topics
 
@@ -25,6 +25,9 @@ WPF-приложение для сбора реестра регулируемы
 - `crawler`
 - `russian-software`
 - `eias`
+- `telemetry`
+- `monitoring`
+- `performance-monitoring`
 
 ## Current stack
 
@@ -36,6 +39,8 @@ WPF-приложение для сбора реестра регулируемы
 - Microsoft.Extensions.Hosting / Dependency Injection
 - xUnit
 - GitHub Actions
+- In-process parser telemetry (`IParserTelemetry`)
+- Stopwatch-based timings / ETA / throughput metrics
 
 ## Architecture highlights
 
@@ -47,3 +52,13 @@ WPF-приложение для сбора реестра регулируемы
 - Form 4.1.1 is selected structurally from `ASPxGridViewDet`.
 - `TemplatePrinter.aspx` is opened directly; modal dialog / iframe and workbook tab clicks are avoided.
 - Contacts are parsed by stable form parameter codes rather than HTML row numbers.
+
+## v0.7 monitoring highlights
+
+- Separate WPF parser-monitor window; the organization DataGrid remains compact.
+- One telemetry stream for catalog and details workers.
+- Pipeline stages update both the main sidebar and the monitor UI.
+- Per-page and per-organization timings.
+- Per-step details timings: catalog fallback, organization card, 4.1.1 link extraction, TemplatePrinter load, HTML parse.
+- Active workers, completed/total, success/error counters, average item time, throughput and ETA.
+- Runtime-log filtering and CSV/TXT export.

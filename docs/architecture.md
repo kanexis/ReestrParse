@@ -88,3 +88,21 @@ TemplatePrinter в свою очередь уже содержит HTML всех
 - `ICrawlCheckpointStore`.
 
 EF Core не должен добавлять атрибуты или зависимости в Domain.
+
+
+## Runtime monitoring / telemetry
+
+`Infrastructure` и `Application` не обращаются напрямую к WPF. Вместо этого они публикуют `ParserTelemetryEvent` через `IParserTelemetry`.
+
+```text
+Catalog / Details workers
+        ↓
+IParserTelemetry
+        ↓
+ParserTelemetryHub
+     ↙       ↘
+MainWindow   ParserMonitorWindow
+status       logs / timings / ETA
+```
+
+Событие может содержать stage, operation, worker id, page/total pages, item/total items, organization/INN, duration, counters и error. Благодаря этому основной UI показывает только компактный pipeline/status, а отдельный монитор хранит подробный журнал и performance metrics.

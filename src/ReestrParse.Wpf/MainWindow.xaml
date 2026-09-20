@@ -34,50 +34,90 @@
         <StackPanel Grid.Row="2">
           <TextBlock Text="PIPELINE" Foreground="#64748B" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,12" />
 
-          <Border Background="#1F2937" CornerRadius="8" Padding="12" Margin="0,0,0,8">
+          <Border CornerRadius="8" Padding="12" Margin="0,0,0,8">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Background" Value="Transparent" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding CurrentPipelineStep}" Value="1">
+                    <Setter Property="Background" Value="#1F2937" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
             <StackPanel Orientation="Horizontal">
               <Border Width="28" Height="28" CornerRadius="14" Background="#2563EB">
                 <TextBlock Text="1" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
               <StackPanel Margin="10,0,0,0">
                 <TextBlock Text="Регион и фильтры" Foreground="White" FontWeight="SemiBold" />
-                <TextBlock Text="Map.aspx → НАЙТИ" Foreground="#94A3B8" FontSize="11" />
+                <TextBlock Text="{Binding RegionStepStatus}" Foreground="#94A3B8" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="170" />
               </StackPanel>
             </StackPanel>
           </Border>
 
-          <Border Padding="12" Margin="0,0,0,8">
+          <Border CornerRadius="8" Padding="12" Margin="0,0,0,8">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Background" Value="Transparent" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding CurrentPipelineStep}" Value="2">
+                    <Setter Property="Background" Value="#1F2937" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
             <StackPanel Orientation="Horizontal">
               <Border Width="28" Height="28" CornerRadius="14" BorderBrush="#475569" BorderThickness="1">
                 <TextBlock Text="2" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
               <StackPanel Margin="10,0,0,0">
                 <TextBlock Text="Каталог" Foreground="#CBD5E1" />
-                <TextBlock Text="DevExpress pagination" Foreground="#64748B" FontSize="11" />
+                <TextBlock Text="{Binding CatalogStepStatus}" Foreground="#64748B" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="170" />
               </StackPanel>
             </StackPanel>
           </Border>
 
-          <Border Padding="12" Margin="0,0,0,8">
+          <Border CornerRadius="8" Padding="12" Margin="0,0,0,8">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Background" Value="Transparent" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding CurrentPipelineStep}" Value="3">
+                    <Setter Property="Background" Value="#1F2937" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
             <StackPanel Orientation="Horizontal">
               <Border Width="28" Height="28" CornerRadius="14" BorderBrush="#475569" BorderThickness="1">
                 <TextBlock Text="3" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
               <StackPanel Margin="10,0,0,0">
                 <TextBlock Text="Контакты 4.1.1" Foreground="#CBD5E1" />
-                <TextBlock Text="Параллельные workers" Foreground="#64748B" FontSize="11" />
+                <TextBlock Text="{Binding ContactsStepStatus}" Foreground="#64748B" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="170" />
               </StackPanel>
             </StackPanel>
           </Border>
 
-          <Border Padding="12">
+          <Border CornerRadius="8" Padding="12">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Background" Value="Transparent" />
+                <Style.Triggers>
+                  <DataTrigger Binding="{Binding CurrentPipelineStep}" Value="4">
+                    <Setter Property="Background" Value="#1F2937" />
+                  </DataTrigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
             <StackPanel Orientation="Horizontal">
               <Border Width="28" Height="28" CornerRadius="14" BorderBrush="#475569" BorderThickness="1">
                 <TextBlock Text="4" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
               <StackPanel Margin="10,0,0,0">
                 <TextBlock Text="Экспорт" Foreground="#CBD5E1" />
-                <TextBlock Text="Excel — следующий этап" Foreground="#64748B" FontSize="11" />
+                <TextBlock Text="{Binding ExportStepStatus}" Foreground="#64748B" FontSize="11" />
               </StackPanel>
             </StackPanel>
           </Border>
@@ -263,13 +303,35 @@
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="250" />
+            <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
+
           <StackPanel>
             <TextBlock Text="{Binding ProgressMessage}" Foreground="#1E3A8A" TextWrapping="Wrap" />
             <TextBlock Text="{Binding CurrentStage}" Foreground="#64748B" FontSize="11" Margin="0,2,0,0" />
           </StackPanel>
-          <Button Grid.Column="1"
+
+          <StackPanel Grid.Column="1" Margin="18,0" VerticalAlignment="Center">
+            <DockPanel Margin="0,0,0,4">
+              <TextBlock Text="{Binding OverallProgressText}" Foreground="#475569" FontSize="11" DockPanel.Dock="Left" />
+              <TextBlock Text="{Binding OverallProgressPercent, StringFormat={}{0:F0}%}" Foreground="#1D4ED8" FontSize="11" FontWeight="SemiBold" DockPanel.Dock="Right" />
+            </DockPanel>
+            <ProgressBar Minimum="0"
+                         Maximum="100"
+                         Value="{Binding OverallProgressPercent}"
+                         Height="7" />
+          </StackPanel>
+
+          <Button Grid.Column="2"
+                  Content="Мониторинг / логи"
+                  Click="OpenMonitor_Click"
+                  Background="#DBEAFE"
+                  Foreground="#1D4ED8"
+                  Margin="0,0,8,0" />
+
+          <Button Grid.Column="3"
                   Content="Отмена"
                   Command="{Binding CancelCommand}"
                   Background="Transparent"

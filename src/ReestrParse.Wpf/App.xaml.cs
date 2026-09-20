@@ -17,6 +17,8 @@ public partial class App : System.Windows.Application
         builder.Services.AddReestrParseApplication();
         builder.Services.AddReestrParseSelenium();
 
+        builder.Services.AddSingleton<ParserMonitorWindowViewModel>();
+        builder.Services.AddSingleton<ParserMonitorWindow>();
         builder.Services.AddSingleton<MainWindowViewModel>();
         builder.Services.AddSingleton<MainWindow>();
 
@@ -32,6 +34,9 @@ public partial class App : System.Windows.Application
     {
         if (_host is not null)
         {
+            var monitorWindow = _host.Services.GetService<ParserMonitorWindow>();
+            monitorWindow?.CloseForApplicationExit();
+
             await _host.StopAsync();
             _host.Dispose();
         }
