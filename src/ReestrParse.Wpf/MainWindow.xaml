@@ -2,20 +2,19 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ReestrParse"
-        Width="1440"
-        Height="860"
-        MinWidth="1100"
-        MinHeight="700"
+        Width="1660"
+        Height="920"
+        MinWidth="1180"
+        MinHeight="720"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BackgroundBrush}"
         FontFamily="Segoe UI">
   <Grid>
     <Grid.ColumnDefinitions>
-      <ColumnDefinition Width="260" />
+      <ColumnDefinition Width="276" />
       <ColumnDefinition Width="*" />
     </Grid.ColumnDefinitions>
 
-    <!-- Sidebar -->
     <Border Grid.Column="0" Background="{StaticResource SidebarBrush}">
       <Grid Margin="24">
         <Grid.RowDefinitions>
@@ -33,7 +32,7 @@
         </StackPanel>
 
         <StackPanel Grid.Row="2">
-          <TextBlock Text="ЭТАПЫ" Foreground="#64748B" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,12" />
+          <TextBlock Text="PIPELINE" Foreground="#64748B" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,12" />
 
           <Border Background="#1F2937" CornerRadius="8" Padding="12" Margin="0,0,0,8">
             <StackPanel Orientation="Horizontal">
@@ -41,8 +40,8 @@
                 <TextBlock Text="1" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
               <StackPanel Margin="10,0,0,0">
-                <TextBlock Text="Регион и сфера" Foreground="White" FontWeight="SemiBold" />
-                <TextBlock Text="Подготовка выборки" Foreground="#94A3B8" FontSize="11" />
+                <TextBlock Text="Регион и фильтры" Foreground="White" FontWeight="SemiBold" />
+                <TextBlock Text="Map.aspx → НАЙТИ" Foreground="#94A3B8" FontSize="11" />
               </StackPanel>
             </StackPanel>
           </Border>
@@ -53,8 +52,20 @@
                 <TextBlock Text="2" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
               <StackPanel Margin="10,0,0,0">
-                <TextBlock Text="Организации" Foreground="#CBD5E1" />
-                <TextBlock Text="Обход каталога" Foreground="#64748B" FontSize="11" />
+                <TextBlock Text="Каталог" Foreground="#CBD5E1" />
+                <TextBlock Text="DevExpress pagination" Foreground="#64748B" FontSize="11" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border Padding="12" Margin="0,0,0,8">
+            <StackPanel Orientation="Horizontal">
+              <Border Width="28" Height="28" CornerRadius="14" BorderBrush="#475569" BorderThickness="1">
+                <TextBlock Text="3" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <StackPanel Margin="10,0,0,0">
+                <TextBlock Text="Контакты 4.1.1" Foreground="#CBD5E1" />
+                <TextBlock Text="Параллельные workers" Foreground="#64748B" FontSize="11" />
               </StackPanel>
             </StackPanel>
           </Border>
@@ -62,62 +73,71 @@
           <Border Padding="12">
             <StackPanel Orientation="Horizontal">
               <Border Width="28" Height="28" CornerRadius="14" BorderBrush="#475569" BorderThickness="1">
-                <TextBlock Text="3" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <TextBlock Text="4" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
               <StackPanel Margin="10,0,0,0">
-                <TextBlock Text="Выгрузка" Foreground="#CBD5E1" />
+                <TextBlock Text="Экспорт" Foreground="#CBD5E1" />
                 <TextBlock Text="Excel — следующий этап" Foreground="#64748B" FontSize="11" />
               </StackPanel>
             </StackPanel>
           </Border>
         </StackPanel>
 
-        <Border Grid.Row="4" BorderBrush="#334155" BorderThickness="1,1,1,1" CornerRadius="8" Padding="12">
+        <Border Grid.Row="4" BorderBrush="#334155" BorderThickness="1" CornerRadius="8" Padding="12">
           <StackPanel>
-            <TextBlock Text="Источник" Foreground="#94A3B8" FontSize="11" />
-            <TextBlock Text="ri.eias.ru" Foreground="White" Margin="0,3,0,0" />
-            <TextBlock Text="Selenium WebDriver" Foreground="#60A5FA" FontSize="11" Margin="0,2,0,0" />
+            <TextBlock Text="Stack" Foreground="#94A3B8" FontSize="11" />
+            <TextBlock Text=".NET 10 · WPF · MVVM" Foreground="White" Margin="0,3,0,0" />
+            <TextBlock Text="Selenium · AngleSharp" Foreground="#60A5FA" FontSize="11" Margin="0,2,0,0" />
           </StackPanel>
         </Border>
       </Grid>
     </Border>
 
-    <!-- Workspace -->
-    <Grid Grid.Column="1" Margin="34,28,34,26">
+    <Grid Grid.Column="1" Margin="32,26,32,24">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto" />
-        <RowDefinition Height="22" />
+        <RowDefinition Height="20" />
         <RowDefinition Height="Auto" />
-        <RowDefinition Height="18" />
+        <RowDefinition Height="16" />
         <RowDefinition Height="*" />
-        <RowDefinition Height="18" />
+        <RowDefinition Height="16" />
         <RowDefinition Height="Auto" />
       </Grid.RowDefinitions>
 
       <DockPanel>
         <StackPanel DockPanel.Dock="Left">
-          <TextBlock Text="Каталог организаций" FontSize="28" FontWeight="SemiBold" Foreground="{StaticResource TextBrush}" />
-          <TextBlock Text="Выберите регион. Система пройдёт пагинацию и соберёт список теплоснабжающих организаций."
-                     Foreground="{StaticResource MutedBrush}" FontSize="13" Margin="0,7,0,0" />
+          <TextBlock Text="Каталог и контакты организаций"
+                     FontSize="28"
+                     FontWeight="SemiBold"
+                     Foreground="{StaticResource TextBrush}" />
+          <TextBlock Text="Сначала собираем каталог по региону, затем параллельно читаем только форму 4.1.1 каждой организации."
+                     Foreground="{StaticResource MutedBrush}"
+                     FontSize="13"
+                     Margin="0,7,0,0" />
         </StackPanel>
-        <Border DockPanel.Dock="Right" Background="#DCFCE7" CornerRadius="16" Padding="12,6" VerticalAlignment="Top">
+        <Border DockPanel.Dock="Right"
+                Background="#DCFCE7"
+                CornerRadius="16"
+                Padding="12,6"
+                VerticalAlignment="Top">
           <TextBlock Text="{Binding StatusText}" Foreground="#166534" FontSize="12" />
         </Border>
       </DockPanel>
 
-      <!-- Filters -->
       <Border Grid.Row="2"
               Background="{StaticResource SurfaceBrush}"
               BorderBrush="{StaticResource BorderBrush}"
               BorderThickness="1"
               CornerRadius="12"
-              Padding="22">
+              Padding="20">
         <Grid>
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="2*" />
-            <ColumnDefinition Width="18" />
-            <ColumnDefinition Width="1.25*" />
-            <ColumnDefinition Width="18" />
+            <ColumnDefinition Width="2.1*" />
+            <ColumnDefinition Width="16" />
+            <ColumnDefinition Width="1.3*" />
+            <ColumnDefinition Width="16" />
+            <ColumnDefinition Width="110" />
+            <ColumnDefinition Width="16" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
 
@@ -134,54 +154,70 @@
             <ComboBox ItemsSource="{Binding Spheres}"
                       SelectedItem="{Binding SelectedSphere}"
                       DisplayMemberPath="Name"
-                      MinWidth="220" />
+                      MinWidth="210" />
           </StackPanel>
 
-          <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Bottom">
-            <Button Content="Обновить регионы"
-                    Command="{Binding LoadRegionsCommand}"
-                    Background="#EEF2FF"
-                    Foreground="#3730A3"
-                    Margin="0,0,10,0" />
-            <Button Content="Загрузить организации"
-                    Command="{Binding LoadOrganizationsCommand}"
-                    Style="{StaticResource PrimaryButton}" />
+          <StackPanel Grid.Column="4">
+            <TextBlock Text="Workers" FontWeight="SemiBold" Margin="0,0,0,7" />
+            <ComboBox ItemsSource="{Binding ParallelismOptions}"
+                      SelectedItem="{Binding SelectedParallelism}"
+                      MinWidth="90" />
+          </StackPanel>
+
+          <StackPanel Grid.Column="6" VerticalAlignment="Bottom">
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+              <Button Content="Обновить регионы"
+                      Command="{Binding LoadRegionsCommand}"
+                      Background="#EEF2FF"
+                      Foreground="#3730A3"
+                      Margin="0,0,10,0" />
+              <Button Content="1. Загрузить организации"
+                      Command="{Binding LoadOrganizationsCommand}"
+                      Style="{StaticResource PrimaryButton}" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+              <CheckBox Content="Фоновые Chrome"
+                        IsChecked="{Binding HeadlessDetails}"
+                        VerticalAlignment="Center"
+                        Margin="0,0,12,0" />
+              <Button Content="2. Загрузить контакты 4.1.1"
+                      Command="{Binding LoadContactsCommand}"
+                      Background="#0F766E"
+                      Foreground="White" />
+            </StackPanel>
           </StackPanel>
         </Grid>
       </Border>
 
-      <!-- Results -->
       <Border Grid.Row="4"
               Background="{StaticResource SurfaceBrush}"
               BorderBrush="{StaticResource BorderBrush}"
               BorderThickness="1"
-              CornerRadius="12"
-              Padding="0">
+              CornerRadius="12">
         <Grid>
           <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
           </Grid.RowDefinitions>
 
-          <Grid Margin="20,16">
+          <Grid Margin="20,15">
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="300" />
+              <ColumnDefinition Width="360" />
             </Grid.ColumnDefinitions>
 
             <StackPanel>
-              <TextBlock Text="Найденные организации" FontSize="17" FontWeight="SemiBold" />
-              <TextBlock Foreground="{StaticResource MutedBrush}"
-                       FontSize="12">
+              <TextBlock Text="Организации" FontSize="17" FontWeight="SemiBold" />
+              <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="12">
                 <Run Text="Всего: " />
-                <Run Text="{Binding Organizations.Count, Mode=OneWay}"
-                     FontWeight="SemiBold" />
+                <Run Text="{Binding Organizations.Count, Mode=OneWay}" FontWeight="SemiBold" />
+                <Run Text=" · контакты заполняются по мере завершения workers" />
               </TextBlock>
             </StackPanel>
 
             <TextBox Grid.Column="1"
                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                     ToolTip="Поиск по названию организации"
+                     ToolTip="Поиск по названию, ИНН, КПП, телефону, email или ответственному лицу"
                      VerticalAlignment="Center" />
           </Grid>
 
@@ -193,22 +229,31 @@
                     HeadersVisibility="Column"
                     GridLinesVisibility="Horizontal"
                     BorderThickness="0"
-                    RowHeight="38"
-                    ColumnHeaderHeight="42"
-                    Margin="1">
+                    RowHeight="40"
+                    ColumnHeaderHeight="44"
+                    FrozenColumnCount="1"
+                    Margin="1"
+                    EnableRowVirtualization="True"
+                    EnableColumnVirtualization="True">
             <DataGrid.Columns>
-              <DataGridTextColumn Header="№" Binding="{Binding SourcePage}" Width="70" />
-              <DataGridTextColumn Header="Наименование организации" Binding="{Binding Name}" Width="*" />
-              <DataGridTextColumn Header="Регион" Binding="{Binding RegionName}" Width="210" />
-              <DataGridTextColumn Header="Сфера" Binding="{Binding SphereName}" Width="155" />
-              <DataGridTextColumn Header="ID ЕИАС" Binding="{Binding ExternalId}" Width="130" />
-              <DataGridTextColumn Header="Страница" Binding="{Binding SourcePage}" Width="90" />
+              <DataGridTextColumn Header="Организация" Binding="{Binding Name}" Width="310" />
+              <DataGridTextColumn Header="ИНН" Binding="{Binding Inn}" Width="120" />
+              <DataGridTextColumn Header="КПП" Binding="{Binding Kpp}" Width="115" />
+              <DataGridTextColumn Header="orgId" Binding="{Binding OrganizationId}" Width="100" />
+              <DataGridTextColumn Header="Телефон организации" Binding="{Binding Phones}" Width="185" />
+              <DataGridTextColumn Header="Email организации" Binding="{Binding Email}" Width="210" />
+              <DataGridTextColumn Header="Ответственное лицо" Binding="{Binding ResponsiblePerson}" Width="220" />
+              <DataGridTextColumn Header="Телефон ответственного" Binding="{Binding ResponsiblePhone}" Width="180" />
+              <DataGridTextColumn Header="Email ответственного" Binding="{Binding ResponsibleEmail}" Width="210" />
+              <DataGridTextColumn Header="Руководитель" Binding="{Binding Manager}" Width="210" />
+              <DataGridTextColumn Header="Статус" Binding="{Binding ContactStatus}" Width="115" />
+              <DataGridTextColumn Header="Ошибка" Binding="{Binding ContactError}" Width="260" />
+              <DataGridTextColumn Header="Стр." Binding="{Binding SourcePage}" Width="70" />
             </DataGrid.Columns>
           </DataGrid>
         </Grid>
       </Border>
 
-      <!-- Status -->
       <Border Grid.Row="6"
               Background="#EFF6FF"
               BorderBrush="#BFDBFE"
@@ -221,7 +266,7 @@
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
           <StackPanel>
-            <TextBlock Text="{Binding ProgressMessage}" Foreground="#1E3A8A" />
+            <TextBlock Text="{Binding ProgressMessage}" Foreground="#1E3A8A" TextWrapping="Wrap" />
             <TextBlock Text="{Binding CurrentStage}" Foreground="#64748B" FontSize="11" Margin="0,2,0,0" />
           </StackPanel>
           <Button Grid.Column="1"

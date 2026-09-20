@@ -1,30 +1,90 @@
-# Архитектура
+# Architecture
 
-## Правила зависимостей
+## Цель
 
-`Domain` не зависит ни от WPF, ни от Selenium, ни от хранения данных.
+Отделить динамическую browser automation от бизнес-модели и WPF, а также исключить старый сценарий `Back() → page 1 → повторная пагинация`.
 
-`Application` описывает сценарии:
-- загрузить регионы;
-- загрузить организации региона;
-- в будущем собрать детали организации;
-- экспортировать результат.
+## Dependency rule
 
-`Infrastructure.Selenium` реализует эти сценарии через Selenium WebDriver.
+```text
+Domain ← Application ← Infrastructure.Selenium ← WPF composition root
+```
 
-`Wpf` взаимодействует только с Application-контрактами.
+`Domain` не знает о Selenium, AngleSharp, WPF и DI.
 
-## Расширение без переписывания
+## Основные use cases
 
-Будущая БД:
-- `IOrganizationReferenceStore`
-- `IOrganizationDetailsStore`
-- `ICrawlCheckpointStore`
+### Catalog
 
-Сначала можно сделать InMemory/Null реализации, затем EF Core реализации.
-Use Cases при этом не меняются.
+`IEiasCatalogService`
 
-## Page Object layer
+```text
+Map.aspx
+→ region
+→ filters
+→ #searchBtn
+→ ASPxGridView2 pages
+→ OrganizationReference[]
+```
 
-Все Selenium selectors находятся только в `Infrastructure.Selenium/Eias`.
-Изменение DOM ЕИАС не должно приводить к изменениям ViewModel или Domain.
+Каталог последовательно проходит DevExpress pagination одной browser session.
+
+### Details
+
+`IEiasOrganizationDetailsService`
+
+```text
+OrganizationReference[]
+→ concurrent queue
+→ 1..6 independent ChromeDriver workers
+→ PublicDisclosureInfoOrg.aspx
+→ form 4.1.1 row
+→ TemplatePrinter URL
+→ Form411Parser
+→ OrganizationContactDetails[]
+```
+
+Один `IWebDriver` никогда не используется несколькими worker'ами одновременно.
+
+## Почему TemplatePrinter не требует UI automation
+
+Карточка организации уже содержит прямой URL внутри `openTemplateDialog(...)`. Поэтому details crawler не кликает иконку, jQuery dialog и iframe.
+
+TemplatePrinter в свою очередь уже содержит HTML всех листов workbook. Парсер ищет table, содержащий заголовок формы 4.1.1, и читает параметры по стабильным кодам.
+
+## Модели
+
+### OrganizationReference
+
+Лёгкая запись каталога:
+
+- название;
+- ИНН;
+- КПП;
+- регион;
+- сфера;
+- source page;
+- `OrganizationId`;
+- `DetailUrl`.
+
+### OrganizationContactDetails
+
+Результат формы 4.1.1:
+
+- организация / ИНН / КПП;
+- телефоны организации;
+- email / website;
+- ответственное лицо + контакты;
+- руководитель;
+- адреса;
+- source URLs.
+
+## Future persistence
+
+Хранилище добавляется через Application contracts, например:
+
+- `IOrganizationReferenceStore`;
+- `IOrganizationDetailsStore`;
+- `ICrawlCheckpointStore`.
+
+EF Core не должен добавлять атрибуты или зависимости в Domain.

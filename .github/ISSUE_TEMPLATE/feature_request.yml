@@ -1,0 +1,29 @@
+name: Feature request
+description: Propose a crawler, export, persistence or UI improvement.
+title: "[feature] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Catalog
+        - Form 4.1.1
+        - Performance
+        - Export
+        - Persistence
+        - WPF UI
+        - Architecture

@@ -1,0 +1,48 @@
+name: Bug report
+description: Report an EIAS parsing, Selenium or WPF problem.
+title: "[bug] "
+labels: [bug]
+body:
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Stage
+      options:
+        - Regions
+        - Filters / search
+        - Catalog pagination
+        - Organization detail
+        - Form 4.1.1 / TemplatePrinter
+        - Parallel workers
+        - WPF UI
+        - Build / CI
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / exception
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: region
+    attributes:
+      label: Region / sphere
+      placeholder: "Алтайский край / Теплоснабжение"
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: ".NET 10, Windows 11, Chrome ..."
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Relevant HTML / diagnostics
+      description: Do not include secrets or personal credentials.

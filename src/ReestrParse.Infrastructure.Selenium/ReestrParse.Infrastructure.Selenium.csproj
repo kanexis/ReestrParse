@@ -7,6 +7,10 @@
     <ProjectReference Include="..\ReestrParse.Domain\ReestrParse.Domain.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="ReestrParse.Infrastructure.Selenium.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="AngleSharp" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Selenium.WebDriver" />
     <PackageReference Include="Selenium.Support" />

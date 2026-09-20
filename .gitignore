@@ -11,6 +11,7 @@ artifacts/
 exports/
 logs/
 screenshots/
+diagnostics/
 *.har
 
 # Local settings

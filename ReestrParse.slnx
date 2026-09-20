@@ -7,5 +7,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ReestrParse.Application.Tests/ReestrParse.Application.Tests.csproj" />
+    <Project Path="tests/ReestrParse.Infrastructure.Selenium.Tests/ReestrParse.Infrastructure.Selenium.Tests.csproj" />
   </Folder>
 </Solution>

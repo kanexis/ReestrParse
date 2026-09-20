@@ -1,5 +1,4 @@
 using OpenQA.Selenium;
-using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Support.UI;
 
 namespace ReestrParse.Infrastructure.Selenium.Browser;
@@ -9,7 +8,7 @@ internal sealed class SeleniumBrowserSession : IDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private IWebDriver? _driver;
 
-    private IWebDriver Driver => _driver ??= CreateDriver();
+    private IWebDriver Driver => _driver ??= SeleniumDriverFactory.Create(headless: false);
 
     public async Task<T> RunAsync<T>(
         Func<IWebDriver, WebDriverWait, T> action,
@@ -28,7 +27,8 @@ internal sealed class SeleniumBrowserSession : IDisposable
                 };
                 wait.IgnoreExceptionTypes(
                     typeof(NoSuchElementException),
-                    typeof(StaleElementReferenceException));
+                    typeof(StaleElementReferenceException),
+                    typeof(NoSuchFrameException));
 
                 return action(Driver, wait);
             }, cancellationToken);
@@ -37,18 +37,6 @@ internal sealed class SeleniumBrowserSession : IDisposable
         {
             _gate.Release();
         }
-    }
-
-    private static IWebDriver CreateDriver()
-    {
-        var options = new ChromeOptions();
-        options.AddArgument("--start-maximized");
-        options.AddArgument("--disable-notifications");
-        options.AddArgument("--disable-popup-blocking");
-
-        // Для отладки оставляем браузер видимым.
-        // Позже можно вынести Headless в настройки.
-        return new ChromeDriver(options);
     }
 
     public void Dispose()

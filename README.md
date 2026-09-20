@@ -1,31 +1,87 @@
 # ReestrParse
 
-Desktop-приложение для сбора реестров регулируемых организаций из ФГИС ЕИАС.
+> WPF-приложение для сбора реестра регулируемых организаций и контактных данных из формы **4.1.1 «Общая информация об организации»** ФГИС ЕИАС.
 
-Первая цель проекта: открыть `https://ri.eias.ru/Map.aspx`, выбрать регион РФ и сферу
-**«Теплоснабжение»**, пройти пагинацию списка организаций и показать найденные организации
-в WPF-интерфейсе.
+![.NET](https://img.shields.io/badge/.NET-10.0_LTS-512BD4)
+![WPF](https://img.shields.io/badge/UI-WPF-0C54C2)
+![Selenium](https://img.shields.io/badge/Selenium-4.49.0-43B02A)
+![AngleSharp](https://img.shields.io/badge/AngleSharp-1.8.1-6C63FF)
+![Architecture](https://img.shields.io/badge/architecture-layered-111827)
 
-## Почему Selenium
+> **v0.6:** для каталогов, где DevExpress не отдаёт `orgId`, добавлен fallback через реальный клик строки в отдельной Selenium worker-session.
 
-ЕИАС — динамический сайт с состоянием страницы, поэтому WebDriver остаётся основным
-механизмом навигации. При этом Selenium изолирован в отдельном Infrastructure-проекте:
-Domain, Application и WPF не знают о `IWebDriver`.
+## Что умеет проект
 
-## Главная оптимизация
+Текущий pipeline:
 
-Старый алгоритм:
+1. Открывает `https://ri.eias.ru/Map.aspx` через Selenium WebDriver.
+2. Загружает реальные регионы из динамического Bootstrap-select.
+3. Выбирает регион и сферу **«Теплоснабжение»**.
+4. Выбирает фильтр **«Общая информация об организации»** и отдельно нажимает `#searchBtn` (`НАЙТИ`).
+5. Проходит актуальную DevExpress-пагинацию `ASPxGridView2` и собирает весь каталог:
+   - организация;
+   - ИНН;
+   - КПП;
+   - номер исходной страницы;
+   - внутренний `orgId`/прямой URL карточки, если его отдаёт DevExpress.
+6. Параллельно несколькими независимыми ChromeDriver-сессиями открывает карточки организаций:
+   - fast path — прямой `DetailUrl/orgId`, если DevExpress его отдал;
+   - fallback — worker открывает отфильтрованный каталог, переходит на `SourcePage` и кликает первую ячейку нужной строки по `Название + ИНН + КПП`.
+7. После fallback реальный `orgId` извлекается из URL открывшейся карточки.
+8. На странице организации находит **только форму 4.1.1** в `ASPxGridViewDet`.
+9. Не кликает модальное окно/iframe: извлекает прямой `TemplatePrinter.aspx` URL из `openTemplateDialog(...)`.
+10. В HTML TemplatePrinter находит лист **«Форма 4.1.1»** без переключения вкладок и читает данные по стабильным кодам параметров.
+11. Заполняет контакты в WPF-таблице по мере завершения worker'ов.
 
-`страница списка -> организация -> форма -> Назад -> страница 1 -> восстановить страницу N`
+## Какие контакты извлекаются
 
-Новый алгоритм двухфазный:
+Для формы 4.1.1 используются стабильные коды параметров, а не номера HTML-строк:
 
-1. **Catalog phase** — один раз пройти все страницы пагинации и собрать
-   `OrganizationReference` (название, ID, URL карточки).
-2. **Details phase** — позже обходить карточки напрямую по сохранённым URL/ID.
+| Код | Данные |
+| --- | --- |
+| `2.1` | Наименование организации |
+| `2.2` | ИНН |
+| `2.3` | КПП |
+| `3.1.1–3.1.3` | ФИО ответственного лица |
+| `3.2` | Должность ответственного лица |
+| `3.3` | Телефон ответственного лица |
+| `3.4` | Email ответственного лица |
+| `4.1–4.3` | ФИО руководителя |
+| `5` | Почтовый адрес |
+| `6` | Адрес местонахождения |
+| `7.1` | Контактные телефоны организации; поддерживается несколько строк |
+| `8` | Официальный сайт |
+| `9` | Email организации |
 
-Если сайт не отдаёт прямой URL карточки, список остаётся в первой вкладке, а карточка
-открывается во второй вкладке и закрывается после чтения. Позиция пагинации не теряется.
+## Почему новая схема быстрее старой
+
+Старая версия работала так:
+
+```text
+каталог page N
+→ открыть организацию
+→ прочитать форму
+→ Back
+→ ЕИАС возвращает page 1
+→ снова пройти 1..N
+```
+
+На больших реестрах время росло всё сильнее с каждой страницей.
+
+Новая архитектура разделяет работу на две независимые фазы:
+
+```text
+Catalog phase — 1 Selenium session
+Map.aspx → filters → search → page 1 → page 2 → ... → OrganizationReference[]
+
+Details phase — N Selenium workers
+OrganizationReference queue
+      ├─ Chrome #1 → detail → 4.1.1 → TemplatePrinter → contacts
+      ├─ Chrome #2 → detail → 4.1.1 → TemplatePrinter → contacts
+      └─ Chrome #3 → detail → 4.1.1 → TemplatePrinter → contacts
+```
+
+Основная browser-session каталога больше не используется как навигационный стек. Если прямой URL недоступен, fallback выполняется в **отдельном worker-браузере**: он открывает каталог заново, переходит сразу на сохранённую страницу и кликает организацию. Поэтому пагинация основного списка WPF не сбрасывается.
 
 ## Архитектура
 
@@ -39,33 +95,135 @@ ReestrParse.Infrastructure.Selenium
 ReestrParse.Wpf
 ```
 
-- **Domain** — Region, Sphere, OrganizationReference.
-- **Application** — сценарии и интерфейсы.
-- **Infrastructure.Selenium** — ChromeDriver, Page Objects, ожидания, пагинация.
-- **Wpf** — MVVM и интерфейс оператора.
+### Domain
 
-Будущие Excel/EF Core модули подключаются через новые реализации Application-контрактов,
-не меняя crawler.
+Чистые модели предметной области:
+
+- `RegionOption`;
+- `SphereOption`;
+- `OrganizationReference`;
+- `OrganizationContactDetails`.
+
+Не зависит от Selenium, WPF и хранения данных.
+
+### Application
+
+Контракты use-case'ов:
+
+- `IEiasCatalogService`;
+- `IEiasOrganizationDetailsService`;
+- progress/result/options DTO.
+
+### Infrastructure.Selenium
+
+Работа с ФГИС ЕИАС:
+
+- Selenium browser session;
+- выбор региона и фильтров;
+- DevExpress pagination;
+- чтение live DOM;
+- получение `orgId`/DetailUrl;
+- click fallback по `Название + ИНН + КПП` для строк без row key;
+- worker pool для карточек;
+- поиск формы 4.1.1;
+- извлечение `TemplatePrinter` URL;
+- HTML parsing через AngleSharp.
+
+### WPF
+
+MVVM-интерфейс оператора:
+
+- выбор региона/сферы;
+- загрузка полного каталога;
+- выбор числа parallel workers `1..6`;
+- фоновые Chrome для details phase;
+- live-progress;
+- поиск по организации, ИНН, КПП, телефону, email и ответственному лицу;
+- контактные данные прямо в таблице.
+
+## Технологии
+
+| Технология | Назначение |
+| --- | --- |
+| .NET 10 | LTS runtime / SDK |
+| WPF | Desktop UI |
+| CommunityToolkit.Mvvm 8.4.2 | MVVM, ObservableObject, RelayCommand |
+| Selenium.WebDriver 4.49.0 | Навигация по динамическому ЕИАС |
+| Selenium.Support 4.49.0 | WebDriverWait и support API |
+| AngleSharp 1.8.1 | Парсинг стабильных HTML snapshot'ов |
+| Microsoft.Extensions.Hosting 10.0.12 | DI и lifecycle приложения |
+| xUnit | Unit tests парсеров |
+| GitHub Actions | Windows CI: restore → build → test |
+
+Версии NuGet централизованы в `Directory.Packages.props`.
+
+## Производительность
+
+Каталог намеренно остаётся **однопоточным**: DevExpress pagination — stateful последовательность одной браузерной сессии.
+
+Контактные данные обрабатываются параллельно. По умолчанию UI использует **3 worker'а**. Рекомендуемый диапазон — `2–4`; максимальное значение в интерфейсе ограничено `6`, чтобы не создавать чрезмерную нагрузку на ЕИАС и локальную машину.
+
+Каждый worker создаёт Chrome один раз и обрабатывает несколько организаций из общей очереди. Новый браузер на каждую организацию не запускается.
 
 ## Запуск
+
+Требования:
+
+- Windows;
+- .NET 10 SDK;
+- Google Chrome.
 
 ```powershell
 dotnet restore ReestrParse.slnx
 dotnet build ReestrParse.slnx
+dotnet test ReestrParse.slnx
 dotnet run --project .\src\ReestrParse.Wpf
 ```
 
-Chrome должен быть установлен. Selenium Manager сам подберёт совместимый драйвер.
+Selenium Manager подбирает совместимый ChromeDriver автоматически.
 
-## Первые milestones
+## Структура
 
-- [x] WPF shell
-- [x] Selenium browser session
-- [x] Загрузка регионов с Map.aspx
-- [x] Сценарий загрузки организаций по региону и теплоснабжению
-- [x] Пагинация без открытия карточек
-- [ ] Уточнить selectors под актуальную разметку ЕИАС
-- [ ] Карточка организации
-- [ ] Форма 4.1.1
-- [ ] Excel
-- [ ] Checkpoint / EF Core
+```text
+src/
+├── ReestrParse.Domain/
+├── ReestrParse.Application/
+├── ReestrParse.Infrastructure.Selenium/
+│   ├── Browser/
+│   └── Eias/
+│       └── Details/
+└── ReestrParse.Wpf/
+
+tests/
+├── ReestrParse.Application.Tests/
+└── ReestrParse.Infrastructure.Selenium.Tests/
+
+docs/
+├── architecture.md
+├── pagination-strategy.md
+├── details-pipeline.md
+└── github-repository.md
+```
+
+## Roadmap
+
+- [x] WPF + MVVM shell
+- [x] Динамическая загрузка регионов
+- [x] Теплоснабжение + форма «Общая информация об организации»
+- [x] DevExpress pagination каталога
+- [x] Каталог `Организация / ИНН / КПП`
+- [x] Гибридный details pipeline: direct URL + catalog click fallback без разрушения основной пагинации
+- [x] Поиск только формы 4.1.1
+- [x] Парсинг TemplatePrinter без кликов по Excel-вкладкам
+- [x] Parallel Selenium worker pool для контактных данных
+- [ ] Excel export из текущей модели данных
+- [ ] Checkpoint/resume
+- [ ] EF Core persistence
+- [ ] Повторный запуск только для ошибочных организаций
+- [ ] Опциональный HTTP fast-path для `TemplatePrinter`, если он стабильно работает без browser session
+
+## Ограничения
+
+ФГИС ЕИАС — внешний динамический сервис. DOM, DevExpress callbacks и параметры страниц могут изменяться. Поэтому Selenium selectors и HTML parsing изолированы в Infrastructure, а Domain/Application не зависят от конкретной разметки сайта.
+
+Если DevExpress не отдаёт внутренний row key, это больше не ошибка: отдельный worker открывает нужную `SourcePage` каталога и использует проверенный клик по первой ячейке организации. Такой путь медленнее direct URL, но сохраняет работоспособность на каталогах без client-side keys.
