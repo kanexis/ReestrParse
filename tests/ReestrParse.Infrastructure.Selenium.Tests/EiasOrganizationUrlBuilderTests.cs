@@ -1,7 +1,6 @@
 using ReestrParse.Domain.Catalog;
 using ReestrParse.Domain.Organizations;
 using ReestrParse.Infrastructure.Selenium.Eias;
-using Xunit;
 
 namespace ReestrParse.Infrastructure.Selenium.Tests;
 

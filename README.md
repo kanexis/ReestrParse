@@ -8,9 +8,19 @@
 ![AngleSharp](https://img.shields.io/badge/AngleSharp-1.8.1-6C63FF)
 ![Architecture](https://img.shields.io/badge/architecture-layered-111827)
 
+> **v0.8:** observability/UX update: монитор парсера получил непрерывный elapsed/ETA, отдельную привязку исходной страницы к каждой операции, более подробный журнал, а в корень репозитория добавлен портфолио-документ [`ARCHITECTURE.md`](ARCHITECTURE.md) с диаграммами и разбором асинхронности/worker pool.
+
 > **v0.7:** добавлен отдельный монитор парсера: live pipeline stages, общий progress, page/item timings, worker activity, ETA, throughput, фильтруемый журнал ошибок/событий и CSV export логов.
 
 > **v0.6:** для каталогов, где DevExpress не отдаёт `orgId`, добавлен fallback через реальный клик строки в отдельной Selenium worker-session.
+
+
+## Документация
+
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — подробный русскоязычный разбор архитектуры для разработки и портфолио: Mermaid-схемы, pipeline, Selenium/AngleSharp, async vs parallelism, worker pool, telemetry, cancellation и fault isolation.
+- [`docs/pagination-strategy.md`](docs/pagination-strategy.md) — стратегия обхода DevExpress-пагинации.
+- [`docs/details-pipeline.md`](docs/details-pipeline.md) — обработка карточек и формы 4.1.1.
+- [`docs/github-repository.md`](docs/github-repository.md) — рекомендуемое описание, topics и stack для GitHub.
 
 ## Что умеет проект
 

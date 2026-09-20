@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.8 — observability, live metrics & portfolio architecture
+
+### Added
+
+- Корневой `ARCHITECTURE.md` на русском языке с Mermaid-схемами, описанием слоёв, catalog/details pipeline, worker pool, async/parallelism, cancellation, fault isolation и observability.
+- Отдельная колонка `Стр.` в журнале monitor window: для каждой details-операции видно, с какой страницы исходного каталога пришла организация.
+- Непрерывное обновление elapsed/ETA через `DispatcherTimer`, даже если между telemetry events есть длинная загрузка страницы.
+- README-раздел документации со ссылкой на архитектурный документ.
+
+### Changed
+
+- Версия проекта повышена до `0.8.0`.
+- GitHub metadata расширена акцентами на observability, bounded parallelism и portfolio documentation.
+
 ## v0.7 — parser monitoring & pipeline UX
 
 ### Added

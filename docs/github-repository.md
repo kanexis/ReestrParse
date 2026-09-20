@@ -2,7 +2,7 @@
 
 ## Suggested description
 
-WPF + Selenium crawler for ФГИС ЕИАС: full regional catalogs, DevExpress pagination, parallel Form 4.1.1 contacts, resilient click fallback, live telemetry, timings and operator monitoring UI.
+WPF + Selenium crawler for ФГИС ЕИАС: DevExpress catalog pagination, parallel Form 4.1.1 contact extraction, resilient click fallback, live observability, timings, ETA and operator monitoring UI.
 
 ## Короткое описание на русском
 
@@ -28,6 +28,10 @@ WPF-приложение для сбора реестра организаций
 - `telemetry`
 - `monitoring`
 - `performance-monitoring`
+- `observability`
+- `concurrency`
+- `multithreading`
+- `async-await`
 
 ## Current stack
 
@@ -62,3 +66,7 @@ WPF-приложение для сбора реестра организаций
 - Per-step details timings: catalog fallback, organization card, 4.1.1 link extraction, TemplatePrinter load, HTML parse.
 - Active workers, completed/total, success/error counters, average item time, throughput and ETA.
 - Runtime-log filtering and CSV/TXT export.
+
+## Portfolio documentation
+
+В корне репозитория находится [`ARCHITECTURE.md`](../ARCHITECTURE.md) — отдельный русскоязычный технический разбор с Mermaid-диаграммами и объяснением решений, который можно использовать при code review и на собеседованиях.

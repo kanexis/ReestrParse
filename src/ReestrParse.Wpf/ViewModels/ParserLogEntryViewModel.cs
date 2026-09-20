@@ -40,6 +40,7 @@ public sealed class ParserLogEntryViewModel
     };
     public string Operation => Source.Operation;
     public string Worker => Source.WorkerId is > 0 ? $"W{Source.WorkerId}" : "—";
+    public string Page => Source.Page.HasValue ? Source.Page.Value.ToString() : "—";
 
     public string Position
     {

@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Windows.Data;
+using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
@@ -15,6 +16,7 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
     private readonly IParserTelemetry _telemetry;
     private readonly Stopwatch _sessionStopwatch = new();
     private readonly List<TimeSpan> _itemDurations = [];
+    private readonly DispatcherTimer _uiTimer;
     private bool _disposed;
 
     public ObservableCollection<ParserLogEntryViewModel> Logs { get; } = [];
@@ -87,6 +89,15 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
 
         FilteredLogs = CollectionViewSource.GetDefaultView(Logs);
         FilteredLogs.Filter = FilterLog;
+
+        // Метрики времени должны обновляться даже в паузах между telemetry-событиями.
+        // DispatcherTimer работает в UI-потоке и не требует дополнительной синхронизации с WPF bindings.
+        _uiTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(500)
+        };
+        _uiTimer.Tick += (_, _) => RefreshLiveTimeMetrics();
+        _uiTimer.Start();
     }
 
     partial void OnSelectedLevelFilterChanged(string value) => FilteredLogs.Refresh();
@@ -224,7 +235,20 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
         }
 
         ProgressCaption = $"{ProgressPercent:F1}%";
+        RefreshDerivedMetrics();
+    }
 
+    private void RefreshLiveTimeMetrics()
+    {
+        if (!_sessionStopwatch.IsRunning)
+            return;
+
+        ElapsedText = FormatDuration(_sessionStopwatch.Elapsed);
+        RefreshDerivedMetrics();
+    }
+
+    private void RefreshDerivedMetrics()
+    {
         if (_itemDurations.Count == 0)
             return;
 
@@ -295,7 +319,7 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
             return;
 
         using var writer = new StreamWriter(dialog.FileName, false, new System.Text.UTF8Encoding(true));
-        writer.WriteLine("Time;Level;Stage;Operation;Worker;Position;Duration;Organization;INN;Message;Error");
+        writer.WriteLine("Time;Level;Stage;Operation;Worker;SourcePage;Position;Duration;Organization;INN;Message;Error");
 
         foreach (var log in Logs)
         {
@@ -305,6 +329,7 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
                 Csv(log.Stage),
                 Csv(log.Operation),
                 Csv(log.Worker),
+                Csv(log.Page),
                 Csv(log.Position),
                 Csv(log.Duration),
                 Csv(log.Organization),
@@ -350,6 +375,7 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
             return;
 
         _disposed = true;
+        _uiTimer.Stop();
         _telemetry.Published -= OnPublished;
     }
 }
