@@ -1,19 +1,19 @@
 # Contributing
 
-## Architecture rules
+## Правила архитектуры
 
-1. `Domain` must not depend on Selenium, WPF, AngleSharp or persistence.
-2. WPF/ViewModels must not contain CSS/XPath selectors.
-3. Selenium selectors and EIAS-specific behavior belong to `Infrastructure.Selenium`.
-4. Never store `IWebElement` across page transitions or DevExpress callbacks.
-5. One `IWebDriver` instance may be owned by only one worker at a time.
-6. Do not reintroduce `catalog → detail → Back()` navigation.
-7. Form 4.1.1 fields must be mapped by parameter code (`7.1`, `9`, etc.), not by HTML row number.
-8. A failure for one organization must not stop processing the remaining queue.
+1. `Domain` должен зависеть от Selenium, WPF, AngleSharp или Persistence.
+2. WPF/ViewModels не должны иметь CSS/XPath selectors.
+3. Selenium selectors и EIAS-specific behavior ссылаются на `Infrastructure.Selenium`.
+4. Никогда не храни `IWebElement` в переходах между страницами или обратных вызовах DevExpress.
+5. Один `IWebDriver` экземпляр должен иметь только 1 работника.
+6. Не проводить `catalog → detail → Back()` навигацию.
+7. Поля 4.1.1 формы должны быть сопоставлены по коду параметра (`7.1`, `9`, etc.), а не HTML-номер страницы.
+8. Сбой в одной организации не должен останавливать обработку оставшейся очереди.
 
-## Branches
+## Ветки
 
-Use focused branches, for example:
+Используйте сфокусированные ветви, например:
 
 ```text
 feat/excel-export
@@ -21,7 +21,7 @@ feat/checkpoints
 fix/form-411-parser
 ```
 
-## Before PR
+## Прежде, чем приступить
 
 ```powershell
 dotnet restore ReestrParse.slnx
@@ -29,4 +29,4 @@ dotnet build ReestrParse.slnx --configuration Release
 dotnet test ReestrParse.slnx --configuration Release
 ```
 
-If a change depends on current EIAS DOM, attach a minimal sanitized HTML fixture to the PR or add a parser unit test.
+Если изменение зависит от текущего стандарта EIAS DOM, приложите к PR минимально обработанный HTML-код или добавьте модульный тест синтаксического анализатора.
