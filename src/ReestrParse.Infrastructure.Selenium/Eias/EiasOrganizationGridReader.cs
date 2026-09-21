@@ -68,7 +68,7 @@ internal static class EiasOrganizationGridReader
                 page: targetPage,
                 totalPages: totalPages);
 
-            EiasPagerNavigator.GoToPage(driver, targetPage, cancellationToken);
+            EiasPagerNavigator.GoToNextCatalogPage(driver, targetPage, cancellationToken);
             navigationSw.Stop();
 
             telemetry.Success(

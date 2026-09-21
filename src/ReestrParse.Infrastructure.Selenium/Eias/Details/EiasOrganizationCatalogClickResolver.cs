@@ -123,6 +123,13 @@ internal static class EiasOrganizationCatalogClickResolver
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        WaitForGlobalCatalogBackoff(
+            telemetry,
+            workerId,
+            organization,
+            itemIndex,
+            totalItems,
+            cancellationToken);
 
         // Каждая попытка начинается с чистого входа в каталог. Не используем DOM,
         // оставшийся после предыдущего зависшего DevExpress callback.
@@ -361,6 +368,14 @@ internal static class EiasOrganizationCatalogClickResolver
         int totalItems,
         CancellationToken cancellationToken)
     {
+        WaitForGlobalCatalogBackoff(
+            telemetry,
+            workerId,
+            organization,
+            itemIndex,
+            totalItems,
+            cancellationToken);
+
         try
         {
             EiasPagerNavigator.GoToPage(browser.Driver, targetPage, cancellationToken);
@@ -372,6 +387,8 @@ internal static class EiasOrganizationCatalogClickResolver
         }
         catch (WebDriverException ex)
         {
+            EiasCatalogBackoffGate.ReportNavigationFailure();
+
             telemetry.Warning(
                 ParserPipelineStage.DetailsNavigation,
                 "Catalog page navigation retry",
@@ -389,11 +406,16 @@ internal static class EiasOrganizationCatalogClickResolver
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+        WaitForGlobalCatalogBackoff(
+            telemetry,
+            workerId,
+            organization,
+            itemIndex,
+            totalItems,
+            cancellationToken);
 
-        // Иногда ASPxGridView callback зависает именно внутри одной worker-session:
-        // pager остаётся на page 1, хотя click уже был отправлен. Полный возврат к
-        // catalog URL + повторное применение тех же фильтров дешевле и надёжнее,
-        // чем продолжать работать с потенциально подвисшим callback state.
+        // Полный rebuild остаётся вторым уровнем recovery, но теперь он выполняется
+        // уже после client API + последовательной навигации самого pager.
         browser.Driver.Navigate().GoToUrl(catalogUrl);
         EiasSearchExecutor.WaitUntilReady(browser.Driver, browser.Wait);
         var state = EiasSearchExecutor.SubmitFiltersAndWait(
@@ -408,8 +430,47 @@ internal static class EiasOrganizationCatalogClickResolver
                 $"После восстановления каталога страница {targetPage} отсутствует. {state.Summary}");
         }
 
-        if (targetPage != 1)
+        if (targetPage == 1)
+            return;
+
+        try
+        {
             EiasPagerNavigator.GoToPage(browser.Driver, targetPage, cancellationToken);
+        }
+        catch (WebDriverException)
+        {
+            EiasCatalogBackoffGate.ReportNavigationFailure();
+            throw;
+        }
+    }
+
+    private static void WaitForGlobalCatalogBackoff(
+        IParserTelemetry telemetry,
+        int workerId,
+        OrganizationReference organization,
+        int itemIndex,
+        int totalItems,
+        CancellationToken cancellationToken)
+    {
+        var delay = EiasCatalogBackoffGate.GetRemainingDelay();
+        if (delay <= TimeSpan.Zero)
+            return;
+
+        telemetry.Warning(
+            ParserPipelineStage.DetailsNavigation,
+            "Global catalog backoff",
+            $"Worker #{workerId}: несколько DevExpress callback-ов подряд завершились ошибкой. " +
+            $"Снижаем нагрузку на каталог примерно на {Math.Ceiling(delay.TotalSeconds):0} сек перед новой попыткой.",
+            workerId: workerId,
+            page: organization.SourcePage,
+            itemIndex: itemIndex,
+            totalItems: totalItems,
+            organizationName: organization.Name,
+            inn: organization.Inn,
+            code: "CATALOG_GLOBAL_BACKOFF",
+            dataSource: "catalog");
+
+        EiasCatalogBackoffGate.WaitIfNeeded(cancellationToken);
     }
 
     private static IReadOnlyList<int> BuildPageOrder(int preferredPage, int totalPages)
