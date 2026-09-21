@@ -1,5 +1,17 @@
 # Changelog
 
+
+## v0.9.1 — stable filters + modern Form 1 / Spread Canvas
+
+- Исправлена гонка первой страницы каталога: после `#searchBtn` старый DevExpress grid больше не считается готовым; ждём фактическое изменение/перезагрузку и 3 стабильных poll подряд.
+- Worker перед поиском каждой организации явно выставляет `WARM` + `Общая информация об организации`, нажимает `НАЙТИ` и ждёт стабилизированный grid.
+- `PublicDisclosureInfo.aspx` и `PublicDisclosureInfoOrg.aspx` принимаются как допустимые маршруты карточки после реального клика.
+- Форма `1 — Общая информация об организации` больше не ошибочно классифицируется как 4.1.1/1.0.1.
+- Добавлен runtime reader GrapeCity/Wijmo Spread для Canvas TemplatePrinter (`gcSpread` / `gcWorksheetCanvas`).
+- Современная форма 1 теплоснабжения читается по кодам 1, 6.1–6.3, 7–11; 4.1.1 и 1.0.1 сохранены.
+- Worker pool расширен до 10; UI default — 6. `SeleniumWorkerBrowser.Dispose()` идемпотентен и всегда выполняет `Quit()` + `Dispose()` из `finally`.
+- Добавлена telemetry: `WORKER_FILTERS_SUBMITTED`, `FORM_1_RUNTIME_SPREAD`, `FORM_1_PARSED`, `TEMPLATE_FORM1_FOUND`.
+
 ## v0.8 — observability, live metrics & portfolio architecture
 
 ### Added

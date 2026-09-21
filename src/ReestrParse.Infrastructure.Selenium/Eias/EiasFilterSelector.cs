@@ -37,9 +37,9 @@ internal static class EiasFilterSelector
 
                             if (!option) continue;
 
-                            if (!select.multiple) {
-                                for (const o of select.options) o.selected = false;
-                            }
+                            // Требуется ровно одна сфера: WARM. Multi-select не должен
+                            // сохранять случайные выбранные значения из предыдущего состояния.
+                            for (const o of select.options) o.selected = false;
                             option.selected = true;
                             select.value = option.value;
                             select.dispatchEvent(new Event('input', { bubbles: true }));
@@ -101,45 +101,39 @@ internal static class EiasFilterSelector
             {
                 d.SwitchTo().DefaultContent();
                 return Convert.ToBoolean(((IJavaScriptExecutor)d).ExecuteScript("""
-                    const checkbox = document.getElementById('ui-multiselect-FormSelect-option-10')
-                        || document.querySelector("input[name='multiselect_FormSelect'][value*='F_W_O_4_1_1']");
+                    const select = document.getElementById('FormSelect')
+                        || document.querySelector("select[name='FormSelect']");
+                    if (!select) return false;
 
-                    if (!checkbox) return false;
+                    // В ЕИАС это одна option, value которой содержит сразу несколько
+                    // form-id через ';'. Выбираем всю option целиком, не split-им value.
+                    const option = Array.from(select.options).find(o =>
+                        String(o.value || '').includes('F_W_O_4_1_1') &&
+                        String(o.value || '').includes('F_W_O_1'));
+                    if (!option) return false;
 
-                    if (!checkbox.checked) checkbox.click();
-                    checkbox.checked = true;
-                    checkbox.dispatchEvent(new Event('input', { bubbles: true }));
-                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                    for (const item of select.options) item.selected = false;
+                    option.selected = true;
 
-                    const value = checkbox.value || '';
-                    const name = checkbox.name || '';
-                    let select = null;
-
-                    if (name.startsWith('multiselect_')) {
-                        select = document.getElementById(name.substring('multiselect_'.length));
+                    const boxes = Array.from(document.querySelectorAll(
+                        "input[name='multiselect_FormSelect']"
+                    ));
+                    for (const box of boxes) {
+                        box.checked = String(box.value || '') === String(option.value || '');
+                        box.setAttribute('aria-selected', box.checked ? 'true' : 'false');
                     }
 
-                    if (!select && value) {
-                        const option = Array.from(document.querySelectorAll('select option'))
-                            .find(o => o.value === value);
-                        select = option?.parentElement || null;
+                    select.dispatchEvent(new Event('input', { bubbles: true }));
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+
+                    if (window.jQuery) {
+                        const $s = window.jQuery(select);
+                        try { if (typeof $s.multiselect === 'function') $s.multiselect('refresh'); } catch (_) {}
+                        try { $s.trigger('change'); } catch (_) {}
                     }
 
-                    if (select) {
-                        for (const option of select.options) {
-                            if (option.value === value) option.selected = true;
-                        }
-                        select.dispatchEvent(new Event('input', { bubbles: true }));
-                        select.dispatchEvent(new Event('change', { bubbles: true }));
-
-                        if (window.jQuery) {
-                            const $s = window.jQuery(select);
-                            try { if (typeof $s.multiselect === 'function') $s.multiselect('refresh'); } catch (_) {}
-                            try { $s.trigger('change'); } catch (_) {}
-                        }
-                    }
-
-                    return checkbox.checked === true;
+                    return Array.from(select.selectedOptions).length === 1 &&
+                           select.selectedOptions[0] === option;
                     """));
             }
             catch (WebDriverException)

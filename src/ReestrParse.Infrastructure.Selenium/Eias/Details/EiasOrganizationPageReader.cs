@@ -118,7 +118,13 @@ internal static partial class EiasOrganizationPageReader
         if (string.Equals(formNumber, "4.1.1", StringComparison.OrdinalIgnoreCase))
             return 1;
 
-        if (formNumber.StartsWith("1", StringComparison.OrdinalIgnoreCase) ||
+        if (string.Equals(formNumber, "1", StringComparison.OrdinalIgnoreCase) &&
+            formName.Contains("Общая информация об организации", StringComparison.OrdinalIgnoreCase))
+        {
+            return 2;
+        }
+
+        if (string.Equals(formNumber, "1.0.1", StringComparison.OrdinalIgnoreCase) ||
             formName.Contains("Основные параметры", StringComparison.OrdinalIgnoreCase))
         {
             return 10;
@@ -156,10 +162,14 @@ internal sealed record EiasTemplateCandidate(
 {
     public bool IsForm411 =>
         string.Equals(FormNumber, "4.1.1", StringComparison.OrdinalIgnoreCase) ||
+        (string.IsNullOrWhiteSpace(FormNumber) &&
+         FormName.Contains("Форма 4.1.1", StringComparison.OrdinalIgnoreCase));
+
+    public bool IsForm1 =>
+        string.Equals(FormNumber, "1", StringComparison.OrdinalIgnoreCase) &&
         FormName.Contains("Общая информация об организации", StringComparison.OrdinalIgnoreCase);
 
     public bool IsForm101 =>
-        string.Equals(FormNumber, "1", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(FormNumber, "1.0.1", StringComparison.OrdinalIgnoreCase) ||
         FormName.Contains("Основные параметры раскрываемой информации", StringComparison.OrdinalIgnoreCase);
 

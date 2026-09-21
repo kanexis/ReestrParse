@@ -41,6 +41,15 @@ internal static partial class EiasForm411Parser
         string templateUrl)
     {
         var values = EiasFormTableReader.ReadParameters(formTable);
+        return ParseValues(values, source, detailUrl, templateUrl);
+    }
+
+    public static OrganizationContactDetails ParseValues(
+        IReadOnlyDictionary<string, List<string>> values,
+        OrganizationReference source,
+        string detailUrl,
+        string templateUrl)
+    {
         var warnings = new List<string>();
 
         var name = EiasFormTableReader.First(values, "2.1", source.Name);

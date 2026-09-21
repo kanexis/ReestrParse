@@ -58,4 +58,28 @@ public sealed class EiasOrganizationPageReaderTests
         Assert.Equal(10, candidate.Priority);
         Assert.Contains("TemplatePrinter.aspx", candidate.TemplateUrl);
     }
+
+    [Fact]
+    public void ExtractTemplateCandidates_DoesNotConfuseModernForm1With411Or101()
+    {
+        const string html = """
+            <table id="ASPxGridViewDet_DXMainTable">
+              <tr id="ASPxGridViewDet_DXDataRow0">
+                <td></td><td>Теплоснабжение</td><td>Сведения</td>
+                <td>1</td><td>Общая информация об организации</td><td>Единоразовый</td>
+                <td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                <td><a class="get_template" onclick="openTemplateDialog('https://ri-loader.eias.ru/TemplatePrinter.aspx?guid=form-one&amp;id=9', 'ООО Тест');return false;">open</a></td>
+              </tr>
+            </table>
+            """;
+
+        var candidate = Assert.Single(EiasOrganizationPageReader.ExtractTemplateCandidates(
+            html,
+            new Uri("https://ri.eias.ru/Discl/PublicDisclosureInfo.aspx")));
+
+        Assert.True(candidate.IsForm1);
+        Assert.False(candidate.IsForm411);
+        Assert.False(candidate.IsForm101);
+        Assert.Equal(2, candidate.Priority);
+    }
 }

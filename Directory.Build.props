@@ -5,10 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <Authors>kanexis</Authors>
-    <VersionPrefix>0.8.0</VersionPrefix>
+    <VersionPrefix>0.9.1</VersionPrefix>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/kanexis/ReestrParse</RepositoryUrl>
     <PackageProjectUrl>https://github.com/kanexis/ReestrParse</PackageProjectUrl>
-    <Description>WPF/Selenium crawler for ФГИС ЕИАС with full catalog pagination, parallel Form 4.1.1 contact parsing, pipeline telemetry, timing metrics and operator monitoring UI.</Description>
+    <Description>WPF/Selenium crawler for ФГИС ЕИАС with full catalog pagination, parallel Forms 4.1.1 / 1 contact parsing, pipeline telemetry, timing metrics and operator monitoring UI.</Description>
   </PropertyGroup>
 </Project>

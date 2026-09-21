@@ -5,9 +5,14 @@ namespace ReestrParse.Infrastructure.Selenium.Browser;
 
 internal sealed class SeleniumWorkerBrowser : IDisposable
 {
+    private int _disposed;
+
     public SeleniumWorkerBrowser(bool headless)
     {
         Driver = SeleniumDriverFactory.Create(headless);
+        Driver.Manage().Timeouts().PageLoad = TimeSpan.FromSeconds(60);
+        Driver.Manage().Timeouts().AsynchronousJavaScript = TimeSpan.FromSeconds(30);
+
         Wait = new WebDriverWait(Driver, TimeSpan.FromSeconds(35))
         {
             PollingInterval = TimeSpan.FromMilliseconds(250)
@@ -24,7 +29,12 @@ internal sealed class SeleniumWorkerBrowser : IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+            return;
+
+        // Quit закрывает Chrome + chromedriver. Dispose вызывается повторно безопасно:
+        // и после WebDriver-ошибки, и в finally worker-а.
         try { Driver.Quit(); } catch { }
-        Driver.Dispose();
+        try { Driver.Dispose(); } catch { }
     }
 }

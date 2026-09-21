@@ -18,15 +18,18 @@ internal static class EiasForm101Parser
     public static EiasForm101Data ParseTable(IElement table)
     {
         var values = EiasFormTableReader.ReadParameters(table);
+        return ParseValues(values);
+    }
 
-        return new EiasForm101Data(
+    public static EiasForm101Data ParseValues(
+        IReadOnlyDictionary<string, List<string>> values)
+        => new(
             DisclosureUpdatedAt: EiasFormTableReader.First(values, "1"),
             InfrastructureSystems: EiasFormTableReader.All(values, "2.1"),
             RegulatedActivities: EiasFormTableReader.All(values, "3.1"),
             ServiceRegions: EiasFormTableReader.All(values, "4.1.1"),
             MunicipalDistricts: EiasFormTableReader.All(values, "4.1.1.1"),
             Municipalities: EiasFormTableReader.All(values, "4.1.1.1.1"));
-    }
 }
 
 internal sealed record EiasForm101Data(

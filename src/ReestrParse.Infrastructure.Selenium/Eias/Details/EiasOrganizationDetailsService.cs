@@ -275,7 +275,7 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                         ParserPipelineStage.DetailsCompleted,
                         "Organization completed",
                         $"Организация обработана частично за {itemSw.Elapsed.TotalSeconds:F2} с.: " +
-                        "получена форма 1.0.1, но 4.1.1 с контактами не найдена.",
+                        "получена форма 1.0.1, но контактная форма 4.1.1/1 не найдена.",
                         itemSw.Elapsed,
                         workerId,
                         page: organization.SourcePage,
@@ -403,8 +403,9 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
             ParserPipelineStage.DetailsFormDiscovery,
             "Published forms discovered",
             $"Найдено опубликованных TemplatePrinter-ссылок: {candidates.Count}. " +
-            $"4.1.1 в таблице: {(candidates.Any(x => x.IsForm411) ? "да" : "нет")}; " +
-            $"форма 1: {(candidates.Any(x => x.IsForm101) ? "да" : "нет")}.",
+            $"4.1.1: {(candidates.Any(x => x.IsForm411) ? "да" : "нет")}; " +
+            $"форма 1: {(candidates.Any(x => x.IsForm1) ? "да" : "нет")}; " +
+            $"1.0.1: {(candidates.Any(x => x.IsForm101) ? "да" : "нет")}.",
             discoverySw.Elapsed,
             workerId,
             page: organization.SourcePage,
@@ -462,11 +463,38 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                     detailUrl,
                     candidate.TemplateUrl);
 
+                if (parsed.Details is null && EiasRuntimeSpreadsheetReader.IsSpreadReady(browser.Driver))
+                {
+                    var runtimeValues = WaitForRuntimeParameters(browser, cancellationToken);
+                    parsed = EiasTemplateWorkbookParser.ParseRuntime(
+                        runtimeValues,
+                        candidate,
+                        enrichedSource,
+                        detailUrl,
+                        candidate.TemplateUrl);
+
+                    if (parsed.Details is not null)
+                    {
+                        telemetry.Success(
+                            ParserPipelineStage.DetailsTemplate,
+                            "Runtime Spread parsed",
+                            $"Canvas/Spread workbook прочитан через JS-модель; параметров: {runtimeValues.Count}.",
+                            workerId: workerId,
+                            page: organization.SourcePage,
+                            itemIndex: itemIndex,
+                            totalItems: totalItems,
+                            organizationName: organization.Name,
+                            inn: organization.Inn,
+                            code: candidate.IsForm1 ? "FORM_1_RUNTIME_SPREAD" : "RUNTIME_SPREAD_PARSED",
+                            dataSource: candidate.Caption);
+                    }
+                }
+
                 candidateSw.Stop();
 
                 if (parsed.Details is null)
                 {
-                    var warning = $"{candidate.Caption}: workbook не содержит 4.1.1/1.0.1.";
+                    var warning = $"{candidate.Caption}: workbook не содержит читаемой 4.1.1/1/1.0.1.";
                     candidateErrors.Add(warning);
                     telemetry.Warning(
                         ParserPipelineStage.DetailsTemplate,
@@ -490,6 +518,7 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                     ParserPipelineStage.DetailsTemplate,
                     "Template candidate parsed",
                     $"Workbook обработан: 4.1.1={(parsed.HasForm411 ? "да" : "нет")}, " +
+                    $"1={(parsed.HasForm1 ? "да" : "нет")}, " +
                     $"1.0.1={(parsed.HasForm101 ? "да" : "нет")}; " +
                     $"предупреждений {parsed.Warnings.Count}.",
                     candidateSw.Elapsed,
@@ -499,7 +528,11 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                     totalItems: totalItems,
                     organizationName: organization.Name,
                     inn: organization.Inn,
-                    code: parsed.HasForm411 ? "TEMPLATE_411_FOUND" : "TEMPLATE_101_ONLY",
+                    code: parsed.HasForm411
+                        ? "TEMPLATE_411_FOUND"
+                        : parsed.HasForm1
+                            ? "TEMPLATE_FORM1_FOUND"
+                            : "TEMPLATE_101_ONLY",
                     dataSource: candidate.Caption);
 
                 if (parsed.HasForm411)
@@ -517,6 +550,24 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                         organizationName: organization.Name,
                         inn: organization.Inn,
                         code: "FORM_411_PARSED",
+                        dataSource: candidate.Caption);
+                }
+
+                if (parsed.HasForm1)
+                {
+                    telemetry.Success(
+                        ParserPipelineStage.DetailsForm411,
+                        "Form 1 parsed",
+                        $"Форма 1: телефонов организации {parsed.Details.Phones.Count}; " +
+                        $"email {(string.IsNullOrWhiteSpace(parsed.Details.Email) ? "нет" : "есть")}.",
+                        candidateSw.Elapsed,
+                        workerId,
+                        page: organization.SourcePage,
+                        itemIndex: itemIndex,
+                        totalItems: totalItems,
+                        organizationName: organization.Name,
+                        inn: organization.Inn,
+                        code: "FORM_1_PARSED",
                         dataSource: candidate.Caption);
                 }
 
@@ -539,7 +590,7 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                         dataSource: candidate.Caption);
                 }
 
-                if (bestDetails.HasForm411 && bestDetails.HasForm101)
+                if (bestDetails.HasPrimaryContactForm && bestDetails.HasForm101)
                     break;
             }
             catch (OperationCanceledException)
@@ -592,12 +643,12 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                 dataSource: bestDetails.ParsedForms);
         }
 
-        if (!bestDetails.HasForm411 && bestDetails.HasForm101)
+        if (!bestDetails.HasPrimaryContactForm && bestDetails.HasForm101)
         {
             telemetry.Warning(
                 ParserPipelineStage.DetailsForm411,
                 "4.1.1 unavailable",
-                "Форма 4.1.1 не найдена ни в одном проверенном workbook. " +
+                "Ни форма 4.1.1, ни современная форма 1 с контактами не найдены. " +
                 "Организация сохранена как частичная по данным формы 1.0.1.",
                 workerId: workerId,
                 page: organization.SourcePage,
@@ -619,8 +670,11 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
         if (current is null)
             return incoming;
 
-        // Контактные поля предпочитаем из результата, где реально присутствует 4.1.1.
-        var primary = incoming.HasForm411 && !current.HasForm411 ? incoming : current;
+        // Контактные поля предпочитаем из результата с основной контактной формой:
+        // 4.1.1 имеет приоритет, затем современная форма 1.
+        var incomingRank = incoming.HasForm411 ? 2 : incoming.HasForm1 ? 1 : 0;
+        var currentRank = current.HasForm411 ? 2 : current.HasForm1 ? 1 : 0;
+        var primary = incomingRank > currentRank ? incoming : current;
         var secondary = ReferenceEquals(primary, current) ? incoming : current;
 
         return primary with
@@ -640,6 +694,7 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
             PostalAddress = FirstNonEmpty(primary.PostalAddress, secondary.PostalAddress),
             LocationAddress = FirstNonEmpty(primary.LocationAddress, secondary.LocationAddress),
             HasForm411 = primary.HasForm411 || secondary.HasForm411,
+            HasForm1 = primary.HasForm1 || secondary.HasForm1,
             HasForm101 = primary.HasForm101 || secondary.HasForm101,
             DisclosureUpdatedAt = FirstNonEmpty(primary.DisclosureUpdatedAt, secondary.DisclosureUpdatedAt),
             InfrastructureSystems = Union(primary.Systems, secondary.Systems),
@@ -728,6 +783,30 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
         }
     }
 
+    private static IReadOnlyDictionary<string, List<string>> WaitForRuntimeParameters(
+        SeleniumWorkerBrowser browser,
+        CancellationToken cancellationToken)
+    {
+        var wait = new WebDriverWait(browser.Driver, TimeSpan.FromSeconds(8))
+        {
+            PollingInterval = TimeSpan.FromMilliseconds(500)
+        };
+
+        try
+        {
+            return wait.Until(d =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var values = EiasRuntimeSpreadsheetReader.TryReadParameters(d);
+                return values.Count > 0 ? values : null;
+            }) ?? new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        }
+        catch (WebDriverTimeoutException)
+        {
+            return new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        }
+    }
+
     private static void WaitForTemplateWorkbook(
         SeleniumWorkerBrowser browser,
         CancellationToken cancellationToken)
@@ -748,7 +827,8 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                 return source.Contains("id=\"sheets\"", StringComparison.OrdinalIgnoreCase) ||
                        source.Contains("id='sheets'", StringComparison.OrdinalIgnoreCase) ||
                        source.Contains("Форма 4.1.1", StringComparison.OrdinalIgnoreCase) ||
-                       source.Contains("Форма 1.0.1", StringComparison.OrdinalIgnoreCase);
+                       source.Contains("Форма 1.0.1", StringComparison.OrdinalIgnoreCase) ||
+                       EiasRuntimeSpreadsheetReader.IsSpreadReady(d);
             }
             catch (WebDriverException)
             {

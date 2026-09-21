@@ -21,7 +21,7 @@ public partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<RegionOption> Regions { get; } = [];
     public ObservableCollection<SphereOption> Spheres { get; } = [SphereOption.HeatSupply];
     public ObservableCollection<OrganizationRowViewModel> Organizations { get; } = [];
-    public ObservableCollection<int> ParallelismOptions { get; } = [1, 2, 3, 4, 5, 6];
+    public ObservableCollection<int> ParallelismOptions { get; } = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
     public ICollectionView FilteredOrganizations { get; }
 
@@ -34,7 +34,7 @@ public partial class MainWindowViewModel : ObservableObject
     private SphereOption? selectedSphere = SphereOption.HeatSupply;
 
     [ObservableProperty]
-    private int selectedParallelism = 3;
+    private int selectedParallelism = 6;
 
     [ObservableProperty]
     private bool headlessDetails = true;
@@ -387,7 +387,7 @@ public partial class MainWindowViewModel : ObservableObject
             IsBusy = true;
             CurrentPipelineStep = 3;
             CatalogStepStatus = $"Готово · {Organizations.Count} организаций";
-            ContactsStepStatus = $"Запуск {Math.Clamp(SelectedParallelism, 1, 6)} workers...";
+            ContactsStepStatus = $"Запуск {Math.Clamp(SelectedParallelism, 1, 10)} workers...";
             OverallProgressPercent = 0;
             OverallProgressText = $"Контакты: 0/{Organizations.Count}";
             StatusText = "Контакты";
@@ -438,7 +438,7 @@ public partial class MainWindowViewModel : ObservableObject
             OverallProgressText = $"Контакты обработаны за {totalSw.Elapsed:hh\\:mm\\:ss}";
             ProgressMessage =
                 $"Организации обработаны: полностью {succeeded}, частично {partial}, ошибок {failed}. " +
-                $"Workers: {Math.Clamp(SelectedParallelism, 1, 6)}.";
+                $"Workers: {Math.Clamp(SelectedParallelism, 1, 10)}.";
 
             _telemetry.Success(
                 ParserPipelineStage.Completed,

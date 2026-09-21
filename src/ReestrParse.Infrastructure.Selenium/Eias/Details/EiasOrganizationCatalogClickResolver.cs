@@ -16,7 +16,11 @@ namespace ReestrParse.Infrastructure.Selenium.Eias.Details;
 /// </summary>
 internal static class EiasOrganizationCatalogClickResolver
 {
-    private const string OrganizationPageMarker = "/Discl/PublicDisclosureInfoOrg.aspx";
+    private static readonly string[] OrganizationPageMarkers =
+    [
+        "/Discl/PublicDisclosureInfoOrg.aspx",
+        "/Discl/PublicDisclosureInfo.aspx"
+    ];
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -37,6 +41,30 @@ internal static class EiasOrganizationCatalogClickResolver
 
         cancellationToken.ThrowIfCancellationRequested();
         browser.Driver.Navigate().GoToUrl(catalogUrl);
+        EiasSearchExecutor.WaitUntilReady(browser.Driver, browser.Wait);
+
+        // Не доверяем query-string как доказательству того, что DevExpress уже применил
+        // фильтры. Worker выставляет те же фильтры, что основной проход, нажимает #searchBtn
+        // и ждёт НОВОЕ стабилизировавшееся состояние ASPxGridView2.
+        var filteredState = EiasSearchExecutor.SubmitFiltersAndWait(
+            browser.Driver,
+            browser.Wait,
+            cancellationToken);
+
+        telemetry.Success(
+            ParserPipelineStage.DetailsNavigation,
+            "Worker filters submitted",
+            $"Worker #{workerId}: фильтры WARM + «Общая информация об организации» применены; " +
+            $"grid: {filteredState.Summary}.",
+            workerId: workerId,
+            page: 1,
+            itemIndex: itemIndex,
+            totalItems: totalItems,
+            organizationName: organization.Name,
+            inn: organization.Inn,
+            code: "WORKER_FILTERS_SUBMITTED",
+            dataSource: "catalog");
+
         WaitForCatalog(browser, cancellationToken);
 
         var pager = EiasLivePager.Read(browser.Driver);
@@ -120,9 +148,26 @@ internal static class EiasOrganizationCatalogClickResolver
                 try
                 {
                     var url = d.Url ?? string.Empty;
-                    return url.Contains(OrganizationPageMarker, StringComparison.OrdinalIgnoreCase) ||
-                           (!string.IsNullOrWhiteSpace(url) &&
-                            !string.Equals(url, beforeUrl, StringComparison.OrdinalIgnoreCase));
+                    if (!IsRecognizedOrganizationUrl(url))
+                        return false;
+
+                    var urlChanged = !string.Equals(url, beforeUrl, StringComparison.OrdinalIgnoreCase);
+                    var cardDom = EiasPageWaiter.ExecuteBool(d, """
+                        return Boolean(
+                            document.querySelector("[id^='ASPxGridViewDet']") ||
+                            document.querySelector("a.get_template") ||
+                            document.querySelector("a[onclick*='openTemplateDialog']")
+                        );
+                        """);
+
+                    var explicitOrgRoute = url.Contains(
+                        "/Discl/PublicDisclosureInfoOrg.aspx",
+                        StringComparison.OrdinalIgnoreCase);
+
+                    // Для generic PublicDisclosureInfo.aspx одного изменения query-string
+                    // недостаточно: это может быть всё ещё каталог после postback. Принимаем
+                    // generic-route только когда появился DOM карточки/таблицы публикаций.
+                    return explicitOrgRoute ? (urlChanged || cardDom) : cardDom;
                 }
                 catch (WebDriverException)
                 {
@@ -140,10 +185,10 @@ internal static class EiasOrganizationCatalogClickResolver
         WaitForDocument(browser, cancellationToken);
 
         var resolvedUrl = browser.Driver.Url ?? string.Empty;
-        if (!resolvedUrl.Contains(OrganizationPageMarker, StringComparison.OrdinalIgnoreCase))
+        if (!IsRecognizedOrganizationUrl(resolvedUrl))
         {
             throw new InvalidOperationException(
-                $"После клика по «{organization.Name}» открыт неожиданный URL: {resolvedUrl}");
+                $"После клика по «{organization.Name}» открыт URL, не похожий на карточку ЕИАС: {resolvedUrl}");
         }
 
         if (resolvedPage != organization.SourcePage)
@@ -414,6 +459,12 @@ internal static class EiasOrganizationCatalogClickResolver
             }
         });
     }
+
+
+    private static bool IsRecognizedOrganizationUrl(string? url)
+        => !string.IsNullOrWhiteSpace(url) &&
+           OrganizationPageMarkers.Any(marker =>
+               url.Contains(marker, StringComparison.OrdinalIgnoreCase));
 
     private sealed record RawMatchResult(string RowId, string Strategy);
     private sealed record MatchResult(string RowId, string Strategy);

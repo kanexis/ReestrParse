@@ -23,6 +23,7 @@ public sealed record OrganizationContactDetails(
     string DetailUrl,
     string TemplateUrl,
     bool HasForm411 = false,
+    bool HasForm1 = false,
     bool HasForm101 = false,
     string DisclosureUpdatedAt = "",
     IReadOnlyList<string>? InfrastructureSystems = null,
@@ -44,13 +45,19 @@ public sealed record OrganizationContactDetails(
         !string.IsNullOrWhiteSpace(Email) ||
         !string.IsNullOrWhiteSpace(Website);
 
-    public bool IsPartial => !HasForm411 && HasForm101;
+    public bool HasPrimaryContactForm => HasForm411 || HasForm1;
 
-    public string ParsedForms => (HasForm411, HasForm101) switch
+    public bool IsPartial => !HasPrimaryContactForm && HasForm101;
+
+    public string ParsedForms
     {
-        (true, true) => "4.1.1 + 1.0.1",
-        (true, false) => "4.1.1",
-        (false, true) => "1.0.1",
-        _ => "—"
-    };
+        get
+        {
+            var forms = new List<string>(3);
+            if (HasForm411) forms.Add("4.1.1");
+            if (HasForm1) forms.Add("1");
+            if (HasForm101) forms.Add("1.0.1");
+            return forms.Count == 0 ? "—" : string.Join(" + ", forms);
+        }
+    }
 }

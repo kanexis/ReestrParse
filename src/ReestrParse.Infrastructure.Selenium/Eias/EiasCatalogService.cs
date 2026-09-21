@@ -123,16 +123,19 @@ internal sealed class EiasCatalogService(
                 progress?.Report(new("Поиск", 0, 0, "Фильтры выбраны. Ждём готовность страницы..."));
                 EiasSearchExecutor.WaitUntilReady(driver, wait);
 
+                var beforeSearch = EiasSearchExecutor.CaptureState(driver);
+
                 progress?.Report(new("Поиск", 0, 0, "Нажимаем обязательную кнопку «НАЙТИ»..."));
                 EiasSearchExecutor.ClickSearch(driver, wait);
 
-                progress?.Report(new("Поиск", 0, 0, "Ждём первую страницу таблицы организаций..."));
-                EiasSearchExecutor.WaitForFirstPage(driver, cancellationToken);
+                progress?.Report(new("Поиск", 0, 0, "Ждём фактическое обновление и стабилизацию таблицы..."));
+                var filteredState = EiasSearchExecutor.WaitForFirstPage(driver, beforeSearch, cancellationToken);
 
                 telemetry.Success(
                     ParserPipelineStage.CatalogNavigation,
                     "Search completed",
-                    "Нажата «НАЙТИ», первая страница каталога готова.",
+                    $"Нажата «НАЙТИ»; отфильтрованный grid стабилизирован. " +
+                    $"До поиска: {beforeSearch.Summary}; после: {filteredState.Summary}.",
                     sw.Elapsed);
 
                 progress?.Report(new("Каталог", 1, 0, "Таблица получена. Читаем все страницы..."));
