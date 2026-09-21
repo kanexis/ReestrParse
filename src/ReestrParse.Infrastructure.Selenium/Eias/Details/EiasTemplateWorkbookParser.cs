@@ -88,9 +88,38 @@ internal static class EiasTemplateWorkbookParser
                 ["Runtime Spread доступен, но параметры формы из workbook не извлечены."]);
         }
 
-        var is411 = candidate.IsForm411 || LooksLike411(values);
-        var is1 = candidate.IsForm1 || (!is411 && LooksLikeForm1(values));
-        var is101 = candidate.IsForm101 || (!is411 && !is1 && LooksLike101(values));
+        // Явный номер опубликованной формы сильнее эвристики по кодам.
+        // У современных форм 1 и 4.1.1 часть кодов пересекается, поэтому прежняя
+        // логика могла увидеть в форме 1 коды 2.2/3.3/3.4 и ошибочно применить
+        // схему 4.1.1. Эвристики используем только для кандидата без номера.
+        bool is411;
+        bool is1;
+        bool is101;
+
+        if (candidate.IsForm411)
+        {
+            is411 = true;
+            is1 = false;
+            is101 = false;
+        }
+        else if (candidate.IsForm1)
+        {
+            is411 = false;
+            is1 = true;
+            is101 = false;
+        }
+        else if (candidate.IsForm101)
+        {
+            is411 = false;
+            is1 = false;
+            is101 = true;
+        }
+        else
+        {
+            is411 = LooksLike411(values);
+            is1 = !is411 && LooksLikeForm1(values);
+            is101 = !is411 && !is1 && LooksLike101(values);
+        }
 
         OrganizationContactDetails? details = null;
 

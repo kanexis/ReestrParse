@@ -46,25 +46,139 @@ internal static partial class EiasFormTableReader
                 .Where(x => !x.ClassList.Contains("row-number"))
                 .ToArray();
 
-            if (cells.Length < 3)
+            if (cells.Length < 2)
                 continue;
 
-            var code = Normalize(cells[0].TextContent);
-            if (!ParameterCodeRegex().IsMatch(code))
+            // Код параметра ищем внутри строки, а не считаем, что он всегда cells[0].
+            // Разные TemplatePrinter могут добавлять служебные/пустые TD перед кодом.
+            var codeIndex = Array.FindIndex(cells, cell =>
+                ParameterCodeRegex().IsMatch(Normalize(cell.TextContent)));
+            if (codeIndex < 0)
                 continue;
 
-            var value = Normalize(cells[2].TextContent);
-            if (!result.TryGetValue(code, out var bucket))
-            {
-                bucket = [];
-                result[code] = bucket;
-            }
+            var code = Normalize(cells[codeIndex].TextContent);
 
-            if (!string.IsNullOrWhiteSpace(value))
-                bucket.Add(value);
+            // После кода идёт label, затем value-cell. Если value-cell пустая —
+            // значение остаётся пустым; мы НЕ ищем следующую непустую TD.
+            var valueIndex = codeIndex + 2;
+            var value = valueIndex < cells.Length
+                ? Normalize(cells[valueIndex].TextContent)
+                : string.Empty;
+            var label = codeIndex + 1 < cells.Length
+                ? Normalize(cells[codeIndex + 1].TextContent)
+                : string.Empty;
+
+            AddParameter(result, code, label, value);
         }
 
         return result;
+    }
+
+    internal const string LabelKeyPrefix = "@label:";
+
+    internal static void AddParameter(
+        IDictionary<string, List<string>> result,
+        string code,
+        string? label,
+        string? value)
+    {
+        var normalizedValue = Normalize(value);
+        if (!IsMeaningful(normalizedValue))
+            return;
+
+        AddValue(result, code, normalizedValue);
+
+        var normalizedLabel = Normalize(label);
+        if (IsMeaningful(normalizedLabel))
+            AddValue(result, LabelKeyPrefix + normalizedLabel.ToLowerInvariant(), normalizedValue);
+    }
+
+    private static void AddValue(
+        IDictionary<string, List<string>> result,
+        string key,
+        string value)
+    {
+        if (!result.TryGetValue(key, out var bucket))
+        {
+            bucket = [];
+            result[key] = bucket;
+        }
+
+        if (!bucket.Contains(value, StringComparer.OrdinalIgnoreCase))
+            bucket.Add(value);
+    }
+
+    public static string FirstByCodeOrLabel(
+        IReadOnlyDictionary<string, List<string>> values,
+        string code,
+        params string[] labelFragments)
+    {
+        var byCode = First(values, code);
+        if (IsMeaningful(byCode))
+            return byCode;
+
+        return FirstByLabel(values, labelFragments);
+    }
+
+    public static IReadOnlyList<string> AllByCodeOrLabel(
+        IReadOnlyDictionary<string, List<string>> values,
+        string code,
+        params string[] labelFragments)
+    {
+        // У некоторых версий формы одно логическое поле разложено на дочерние
+        // параметры (например, 9, 9.1, 9.2 для телефонов). Собираем и корень,
+        // и дочерние коды, но никогда не смешиваем их с синтетическими @label:.
+        var result = values
+            .Where(pair =>
+                !pair.Key.StartsWith(LabelKeyPrefix, StringComparison.OrdinalIgnoreCase) &&
+                (string.Equals(pair.Key, code, StringComparison.OrdinalIgnoreCase) ||
+                 pair.Key.StartsWith(code + ".", StringComparison.OrdinalIgnoreCase)))
+            .SelectMany(pair => pair.Value)
+            .Where(IsMeaningful)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        foreach (var item in ValuesByLabel(values, labelFragments))
+        {
+            if (!result.Contains(item, StringComparer.OrdinalIgnoreCase))
+                result.Add(item);
+        }
+
+        return result;
+    }
+
+    public static string FirstByLabel(
+        IReadOnlyDictionary<string, List<string>> values,
+        params string[] labelFragments)
+        => ValuesByLabel(values, labelFragments).FirstOrDefault() ?? string.Empty;
+
+    private static IEnumerable<string> ValuesByLabel(
+        IReadOnlyDictionary<string, List<string>> values,
+        IReadOnlyList<string> labelFragments)
+    {
+        var normalizedFragments = labelFragments
+            .Select(Normalize)
+            .Where(x => x.Length > 0)
+            .ToArray();
+
+        if (normalizedFragments.Length == 0)
+            yield break;
+
+        foreach (var pair in values)
+        {
+            if (!pair.Key.StartsWith(LabelKeyPrefix, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var label = pair.Key[LabelKeyPrefix.Length..];
+            if (!normalizedFragments.Any(fragment =>
+                    label.Contains(fragment, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            foreach (var value in pair.Value.Where(IsMeaningful))
+                yield return value;
+        }
     }
 
     public static string First(

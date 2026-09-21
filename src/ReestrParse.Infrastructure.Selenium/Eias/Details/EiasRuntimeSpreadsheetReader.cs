@@ -30,50 +30,61 @@ internal static partial class EiasRuntimeSpreadsheetReader
                 return Empty();
 
             var result = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+            var inferredValueColumns = InferValueColumns(rows);
 
             foreach (var row in rows)
             {
                 var ordered = row.Cells.OrderBy(x => x.Column).ToArray();
-                for (var i = 0; i < ordered.Length; i++)
+                var codeIndex = Array.FindIndex(ordered, x =>
+                    ParameterCodeRegex().IsMatch(Normalize(FirstNonEmpty(x.Text, x.Value))));
+
+                if (codeIndex < 0)
+                    continue;
+
+                var code = Normalize(FirstNonEmpty(ordered[codeIndex].Text, ordered[codeIndex].Value));
+                var right = ordered.Skip(codeIndex + 1).ToArray();
+                var formulaCells = right
+                    .Where(c => !string.IsNullOrWhiteSpace(c.Formula))
+                    .ToArray();
+
+                int? inferredColumn = inferredValueColumns.TryGetValue(row.Sheet, out var column)
+                    ? column
+                    : null;
+
+                string value;
+
+                if (formulaCells.Length > 0)
                 {
-                    var code = Normalize(FirstNonEmpty(ordered[i].Text, ordered[i].Value));
-                    if (!ParameterCodeRegex().IsMatch(code))
+                    // В современных Canvas/Spread формах value-cell часто formula-backed.
+                    // Если формула существует, но её результат пустой, параметр реально
+                    // не заполнен. НЕЛЬЗЯ искать следующую непустую ячейку справа: там
+                    // может быть подпись/инструкция другого блока, что и давало «съезд».
+                    var formulaCell = inferredColumn is int
+                        ? formulaCells
+                            .OrderBy(c => Math.Abs(c.Column - column))
+                            .FirstOrDefault(c => Math.Abs(c.Column - column) <= 2)
+                        : formulaCells[0];
+
+                    if (formulaCell is null)
                         continue;
 
-                    // В формах справа от кода обычно идут: наименование параметра,
-                    // значение, затем (иногда) пояснение. Последнее значение брать нельзя:
-                    // в современной форме 1 так можно случайно забрать текст инструкции.
-                    // Сначала предпочитаем вычисляемую/formula-ячейку; иначе берём второе
-                    // содержательное значение справа (label -> value), а если оно одно — его.
-                    var right = ordered.Skip(i + 1).ToArray();
-                    var formulaValue = right
-                        .Where(c => !string.IsNullOrWhiteSpace(c.Formula))
-                        .Select(c => Normalize(FirstNonEmpty(c.Text, c.Value)))
-                        .FirstOrDefault(IsRuntimeValue);
-
-                    var meaningful = right
-                        .Select(c => Normalize(FirstNonEmpty(c.Text, c.Value)))
-                        .Where(IsRuntimeValue)
-                        .ToArray();
-
-                    var value = !string.IsNullOrWhiteSpace(formulaValue)
-                        ? formulaValue
-                        : meaningful.Length >= 2
-                            ? meaningful[1]
-                            : meaningful.FirstOrDefault() ?? string.Empty;
-
-                    if (string.IsNullOrWhiteSpace(value))
+                    value = Normalize(FirstNonEmpty(formulaCell.Text, formulaCell.Value));
+                    if (!IsRuntimeValue(value))
                         continue;
-
-                    if (!result.TryGetValue(code, out var bucket))
-                    {
-                        bucket = [];
-                        result[code] = bucket;
-                    }
-
-                    if (!bucket.Contains(value, StringComparer.OrdinalIgnoreCase))
-                        bucket.Add(value);
                 }
+                else
+                {
+                    value = ReadStaticValue(right, inferredColumn);
+                    if (!IsRuntimeValue(value))
+                        continue;
+                }
+
+                var label = right
+                    .Where(c => string.IsNullOrWhiteSpace(c.Formula))
+                    .Select(c => Normalize(FirstNonEmpty(c.Text, c.Value)))
+                    .FirstOrDefault(IsRuntimeValue) ?? string.Empty;
+
+                EiasFormTableReader.AddParameter(result, code, label, value);
             }
 
             return result;
@@ -86,6 +97,98 @@ internal static partial class EiasRuntimeSpreadsheetReader
         {
             return Empty();
         }
+    }
+
+    private static IReadOnlyDictionary<string, int> InferValueColumns(IReadOnlyList<SpreadRow> rows)
+    {
+        var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var sheetGroup in rows.GroupBy(x => x.Sheet, StringComparer.OrdinalIgnoreCase))
+        {
+            // Formula-backed cells — самый сильный якорь реальной value-column.
+            // Берём наиболее частую колонку в листе, а не позицию конкретной строки.
+            var formulaColumns = sheetGroup
+                .SelectMany(row => row.Cells)
+                .Where(cell => !string.IsNullOrWhiteSpace(cell.Formula))
+                .GroupBy(cell => cell.Column)
+                .OrderByDescending(group => group.Count())
+                .ThenBy(group => group.Key)
+                .ToArray();
+
+            if (formulaColumns.Length > 0)
+            {
+                result[sheetGroup.Key] = formulaColumns[0].Key;
+                continue;
+            }
+
+            // Для static Spread без формул определяем value-column статистически.
+            // Первое содержательное поле справа от кода — label, второе — value.
+            // Мода по всему листу переживает отдельные пропущенные значения.
+            var candidates = new List<int>();
+            foreach (var row in sheetGroup)
+            {
+                var ordered = row.Cells.OrderBy(x => x.Column).ToArray();
+                var codeIndex = Array.FindIndex(ordered, x =>
+                    ParameterCodeRegex().IsMatch(Normalize(FirstNonEmpty(x.Text, x.Value))));
+                if (codeIndex < 0)
+                    continue;
+
+                var meaningful = ordered
+                    .Skip(codeIndex + 1)
+                    .Where(x => IsRuntimeValue(Normalize(FirstNonEmpty(x.Text, x.Value))))
+                    .Take(2)
+                    .ToArray();
+
+                if (meaningful.Length == 2)
+                    candidates.Add(meaningful[1].Column);
+            }
+
+            if (candidates.Count > 0)
+            {
+                result[sheetGroup.Key] = candidates
+                    .GroupBy(x => x)
+                    .OrderByDescending(x => x.Count())
+                    .ThenBy(x => x.Key)
+                    .First()
+                    .Key;
+            }
+        }
+
+        return result;
+    }
+
+    private static string ReadStaticValue(IReadOnlyList<SpreadCell> right, int? preferredColumn)
+    {
+        if (preferredColumn is int column)
+        {
+            // Snapshot теперь сохраняет пустые cells. Если value-column пуст —
+            // возвращаем пусто, а не перепрыгиваем к следующему тексту справа.
+            var exact = right.FirstOrDefault(c => c.Column == column);
+            if (exact is not null)
+                return Normalize(FirstNonEmpty(exact.Text, exact.Value));
+
+            var near = right
+                .Where(c => Math.Abs(c.Column - column) <= 1)
+                .OrderBy(c => Math.Abs(c.Column - column))
+                .FirstOrDefault();
+            if (near is not null)
+                return Normalize(FirstNonEmpty(near.Text, near.Value));
+        }
+
+        // Очень старый workbook без формул/стабильной value-column. Последний fallback
+        // допускается лишь при небольшом физическом расстоянии между label и value.
+        var meaningful = right
+            .Where(c => IsRuntimeValue(Normalize(FirstNonEmpty(c.Text, c.Value))))
+            .Take(2)
+            .ToArray();
+
+        if (meaningful.Length < 2)
+            return string.Empty;
+
+        if (meaningful[1].Column - meaningful[0].Column > 12)
+            return string.Empty;
+
+        return Normalize(FirstNonEmpty(meaningful[1].Text, meaningful[1].Value));
     }
 
     public static bool IsSpreadReady(IWebDriver driver)
@@ -215,6 +318,12 @@ internal static partial class EiasRuntimeSpreadsheetReader
             return `sheet-${index}`;
         };
 
+        const normalize = value => String(value || '')
+            .replace(/\u00a0/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const parameterCode = /^\d+(?:\.\d+)*$/;
+
         const result = [];
         const count = Math.min(getSheetCount(), 20);
         for (let s = 0; s < count; s++) {
@@ -225,15 +334,34 @@ internal static partial class EiasRuntimeSpreadsheetReader
             const name = sheetName(sheet, s);
 
             for (let r = 0; r < rows; r++) {
-                const cells = [];
+                let codeColumn = -1;
+
+                // Сначала находим строку параметра. Затем возвращаем окно cells
+                // ВМЕСТЕ с пустыми ячейками. Так C# видит, что value-cell пуст,
+                // и не принимает следующий label за значение текущего параметра.
                 for (let c = 0; c < cols; c++) {
                     const text = read(sheet, 'getText', r, c);
                     const value = read(sheet, 'getValue', r, c);
-                    const formula = read(sheet, 'getFormula', r, c);
-                    if (!text && !value && !formula) continue;
-                    cells.push({ column: c, text, value, formula });
+                    if (parameterCode.test(normalize(text || value))) {
+                        codeColumn = c;
+                        break;
+                    }
                 }
-                if (cells.length) result.push({ sheet: name, row: r, cells });
+
+                if (codeColumn < 0) continue;
+
+                const cells = [];
+                const endColumn = Math.min(cols, codeColumn + 36);
+                for (let c = codeColumn; c < endColumn; c++) {
+                    cells.push({
+                        column: c,
+                        text: read(sheet, 'getText', r, c),
+                        value: read(sheet, 'getValue', r, c),
+                        formula: read(sheet, 'getFormula', r, c)
+                    });
+                }
+
+                result.push({ sheet: name, row: r, cells });
             }
         }
 

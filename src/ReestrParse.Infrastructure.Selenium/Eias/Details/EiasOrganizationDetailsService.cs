@@ -478,7 +478,8 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
                         telemetry.Success(
                             ParserPipelineStage.DetailsTemplate,
                             "Runtime Spread parsed",
-                            $"Canvas/Spread workbook прочитан через JS-модель; параметров: {runtimeValues.Count}.",
+                            $"Canvas/Spread workbook прочитан через JS-модель; параметров: " +
+                            $"{runtimeValues.Count(x => !x.Key.StartsWith(EiasFormTableReader.LabelKeyPrefix, StringComparison.OrdinalIgnoreCase))}.",
                             workerId: workerId,
                             page: organization.SourcePage,
                             itemIndex: itemIndex,

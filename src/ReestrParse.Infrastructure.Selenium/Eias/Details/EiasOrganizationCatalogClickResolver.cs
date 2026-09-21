@@ -16,6 +16,9 @@ namespace ReestrParse.Infrastructure.Selenium.Eias.Details;
 /// </summary>
 internal static class EiasOrganizationCatalogClickResolver
 {
+    private const int MaxOrganizationOpenAttempts = 5;
+    private static readonly TimeSpan CardNavigationTimeout = TimeSpan.FromSeconds(20);
+
     private static readonly string[] OrganizationPageMarkers =
     [
         "/Discl/PublicDisclosureInfoOrg.aspx",
@@ -39,13 +42,93 @@ internal static class EiasOrganizationCatalogClickResolver
             ?? throw new InvalidOperationException(
                 "Недостаточно данных для fallback-перехода через каталог: отсутствуют region/sphere/form.");
 
+        WebDriverException? lastWebDriverException = null;
+
+        for (var attempt = 1; attempt <= MaxOrganizationOpenAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (attempt > 1)
+            {
+                telemetry.Warning(
+                    ParserPipelineStage.DetailsNavigation,
+                    "Organization card open retry",
+                    $"Worker #{workerId}: повторная попытка {attempt}/{MaxOrganizationOpenAttempts} открыть карточку " +
+                    $"«{organization.Name}». Возвращаемся в каталог, заново применяем фильтры и ищем строку.",
+                    workerId: workerId,
+                    page: organization.SourcePage,
+                    itemIndex: itemIndex,
+                    totalItems: totalItems,
+                    organizationName: organization.Name,
+                    inn: organization.Inn,
+                    error: lastWebDriverException?.Message,
+                    code: "CATALOG_ORG_OPEN_RETRY",
+                    dataSource: "catalog");
+            }
+
+            try
+            {
+                return ResolveAndOpenAttempt(
+                    browser,
+                    organization,
+                    catalogUrl,
+                    telemetry,
+                    workerId,
+                    itemIndex,
+                    totalItems,
+                    attempt,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (WebDriverException ex) when (attempt < MaxOrganizationOpenAttempts)
+            {
+                lastWebDriverException = ex;
+
+                telemetry.Warning(
+                    ParserPipelineStage.DetailsNavigation,
+                    "Organization card open attempt failed",
+                    $"Worker #{workerId}: попытка {attempt}/{MaxOrganizationOpenAttempts} открыть карточку " +
+                    $"«{organization.Name}» не удалась. Следующая попытка начнётся с чистого каталога и повторного применения фильтров.",
+                    workerId: workerId,
+                    page: organization.SourcePage,
+                    itemIndex: itemIndex,
+                    totalItems: totalItems,
+                    organizationName: organization.Name,
+                    inn: organization.Inn,
+                    error: ex.Message,
+                    code: "CATALOG_ORG_OPEN_ATTEMPT_FAILED",
+                    dataSource: "catalog");
+
+                RecoverBeforeRetry(browser, catalogUrl, cancellationToken);
+            }
+        }
+
+        // Фактически недостижимо: на пятой попытке exception не перехватывается.
+        throw lastWebDriverException ?? new WebDriverException(
+            $"Не удалось открыть карточку организации «{organization.Name}» после {MaxOrganizationOpenAttempts} попыток.");
+    }
+
+    private static string ResolveAndOpenAttempt(
+        SeleniumWorkerBrowser browser,
+        OrganizationReference organization,
+        string catalogUrl,
+        IParserTelemetry telemetry,
+        int workerId,
+        int itemIndex,
+        int totalItems,
+        int attempt,
+        CancellationToken cancellationToken)
+    {
         cancellationToken.ThrowIfCancellationRequested();
+
+        // Каждая попытка начинается с чистого входа в каталог. Не используем DOM,
+        // оставшийся после предыдущего зависшего DevExpress callback.
         browser.Driver.Navigate().GoToUrl(catalogUrl);
         EiasSearchExecutor.WaitUntilReady(browser.Driver, browser.Wait);
 
-        // Не доверяем query-string как доказательству того, что DevExpress уже применил
-        // фильтры. Worker выставляет те же фильтры, что основной проход, нажимает #searchBtn
-        // и ждёт НОВОЕ стабилизировавшееся состояние ASPxGridView2.
         var filteredState = EiasSearchExecutor.SubmitFiltersAndWait(
             browser.Driver,
             browser.Wait,
@@ -54,8 +137,8 @@ internal static class EiasOrganizationCatalogClickResolver
         telemetry.Success(
             ParserPipelineStage.DetailsNavigation,
             "Worker filters submitted",
-            $"Worker #{workerId}: фильтры WARM + «Общая информация об организации» применены; " +
-            $"grid: {filteredState.Summary}.",
+            $"Worker #{workerId}: попытка {attempt}/{MaxOrganizationOpenAttempts}; фильтры WARM + " +
+            $"«Общая информация об организации» применены; grid: {filteredState.Summary}.",
             workerId: workerId,
             page: 1,
             itemIndex: itemIndex,
@@ -84,9 +167,15 @@ internal static class EiasOrganizationCatalogClickResolver
             var current = EiasLivePager.Read(browser.Driver).CurrentPage;
             if (current != page)
             {
-                EiasPagerNavigator.GoToPage(
-                    browser.Driver,
+                NavigateToPageWithRecovery(
+                    browser,
+                    catalogUrl,
                     page,
+                    organization,
+                    telemetry,
+                    workerId,
+                    itemIndex,
+                    totalItems,
                     cancellationToken);
             }
 
@@ -104,8 +193,8 @@ internal static class EiasOrganizationCatalogClickResolver
                 ParserPipelineStage.DetailsNavigation,
                 "Catalog fallback page scanned",
                 match is null
-                    ? $"Worker #{workerId}: строка не найдена на странице {page}; продолжаем поиск."
-                    : $"Worker #{workerId}: строка найдена на странице {page} по стратегии {match.Strategy}.",
+                    ? $"Worker #{workerId}: попытка {attempt}/{MaxOrganizationOpenAttempts}; строка не найдена на странице {page}; продолжаем поиск."
+                    : $"Worker #{workerId}: попытка {attempt}/{MaxOrganizationOpenAttempts}; строка найдена на странице {page} по стратегии {match.Strategy}.",
                 scanSw.Elapsed,
                 workerId,
                 page: page,
@@ -128,13 +217,13 @@ internal static class EiasOrganizationCatalogClickResolver
             throw new NoSuchElementException(
                 $"Не найдена строка организации «{organization.Name}» " +
                 $"(ИНН {organization.Inn}, КПП {organization.Kpp}). " +
-                $"Проверены страницы: {string.Join(", ", scannedPages)}.");
+                $"Попытка {attempt}/{MaxOrganizationOpenAttempts}. Проверены страницы: {string.Join(", ", scannedPages)}.");
         }
 
         var beforeUrl = browser.Driver.Url;
         ClickMatchedRow(browser, match.RowId, cancellationToken);
 
-        var navigationWait = new WebDriverWait(browser.Driver, TimeSpan.FromSeconds(45))
+        var navigationWait = new WebDriverWait(browser.Driver, CardNavigationTimeout)
         {
             PollingInterval = TimeSpan.FromMilliseconds(250)
         };
@@ -164,9 +253,6 @@ internal static class EiasOrganizationCatalogClickResolver
                         "/Discl/PublicDisclosureInfoOrg.aspx",
                         StringComparison.OrdinalIgnoreCase);
 
-                    // Для generic PublicDisclosureInfo.aspx одного изменения query-string
-                    // недостаточно: это может быть всё ещё каталог после postback. Принимаем
-                    // generic-route только когда появился DOM карточки/таблицы публикаций.
                     return explicitOrgRoute ? (urlChanged || cardDom) : cardDom;
                 }
                 catch (WebDriverException)
@@ -179,7 +265,8 @@ internal static class EiasOrganizationCatalogClickResolver
         {
             throw new WebDriverTimeoutException(
                 $"Строка организации «{organization.Name}» была нажата на странице {resolvedPage}, " +
-                "но браузер не перешёл в карточку организации.", ex);
+                $"но браузер не перешёл в карточку организации за {CardNavigationTimeout.TotalSeconds:0} секунд. " +
+                $"Попытка {attempt}/{MaxOrganizationOpenAttempts}.", ex);
         }
 
         WaitForDocument(browser, cancellationToken);
@@ -187,8 +274,9 @@ internal static class EiasOrganizationCatalogClickResolver
         var resolvedUrl = browser.Driver.Url ?? string.Empty;
         if (!IsRecognizedOrganizationUrl(resolvedUrl))
         {
-            throw new InvalidOperationException(
-                $"После клика по «{organization.Name}» открыт URL, не похожий на карточку ЕИАС: {resolvedUrl}");
+            throw new WebDriverException(
+                $"После клика по «{organization.Name}» открыт URL, не похожий на карточку ЕИАС: {resolvedUrl}. " +
+                $"Попытка {attempt}/{MaxOrganizationOpenAttempts}.");
         }
 
         if (resolvedPage != organization.SourcePage)
@@ -208,7 +296,120 @@ internal static class EiasOrganizationCatalogClickResolver
                 dataSource: "catalog");
         }
 
+        telemetry.Success(
+            ParserPipelineStage.DetailsNavigation,
+            "Organization card opened",
+            $"Worker #{workerId}: карточка «{organization.Name}» открыта с попытки {attempt}/{MaxOrganizationOpenAttempts}.",
+            workerId: workerId,
+            page: resolvedPage,
+            itemIndex: itemIndex,
+            totalItems: totalItems,
+            organizationName: organization.Name,
+            inn: organization.Inn,
+            code: "CATALOG_ORG_OPENED",
+            dataSource: "catalog");
+
         return resolvedUrl;
+    }
+
+    private static void RecoverBeforeRetry(
+        SeleniumWorkerBrowser browser,
+        string catalogUrl,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            browser.Driver.SwitchTo().DefaultContent();
+        }
+        catch (WebDriverException)
+        {
+        }
+
+        try
+        {
+            // Прямой возврат на catalog URL надёжнее Back(): история может содержать
+            // несколько DevExpress postback-состояний и TemplatePrinter переходов.
+            browser.Driver.Navigate().GoToUrl(catalogUrl);
+            EiasSearchExecutor.WaitUntilReady(browser.Driver, browser.Wait);
+        }
+        catch (WebDriverException)
+        {
+            // Следующая ResolveAndOpenAttempt всё равно выполнит GoToUrl(catalogUrl).
+            // Здесь best-effort очистка состояния, чтобы не маскировать исходную ошибку.
+            try
+            {
+                browser.Driver.Navigate().Refresh();
+            }
+            catch (WebDriverException)
+            {
+            }
+        }
+
+        Thread.Sleep(350);
+    }
+
+    private static void NavigateToPageWithRecovery(
+        SeleniumWorkerBrowser browser,
+        string catalogUrl,
+        int targetPage,
+        OrganizationReference organization,
+        IParserTelemetry telemetry,
+        int workerId,
+        int itemIndex,
+        int totalItems,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            EiasPagerNavigator.GoToPage(browser.Driver, targetPage, cancellationToken);
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (WebDriverException ex)
+        {
+            telemetry.Warning(
+                ParserPipelineStage.DetailsNavigation,
+                "Catalog page navigation retry",
+                $"Worker #{workerId}: DevExpress не подтвердил переход на страницу {targetPage}. " +
+                "Пересоздаём отфильтрованное состояние каталога и повторяем переход один раз.",
+                workerId: workerId,
+                page: targetPage,
+                itemIndex: itemIndex,
+                totalItems: totalItems,
+                organizationName: organization.Name,
+                inn: organization.Inn,
+                error: ex.Message,
+                code: "CATALOG_PAGE_RETRY",
+                dataSource: "catalog");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Иногда ASPxGridView callback зависает именно внутри одной worker-session:
+        // pager остаётся на page 1, хотя click уже был отправлен. Полный возврат к
+        // catalog URL + повторное применение тех же фильтров дешевле и надёжнее,
+        // чем продолжать работать с потенциально подвисшим callback state.
+        browser.Driver.Navigate().GoToUrl(catalogUrl);
+        EiasSearchExecutor.WaitUntilReady(browser.Driver, browser.Wait);
+        var state = EiasSearchExecutor.SubmitFiltersAndWait(
+            browser.Driver,
+            browser.Wait,
+            cancellationToken);
+        WaitForCatalog(browser, cancellationToken);
+
+        if (targetPage > state.RowCount)
+        {
+            throw new InvalidOperationException(
+                $"После восстановления каталога страница {targetPage} отсутствует. {state.Summary}");
+        }
+
+        if (targetPage != 1)
+            EiasPagerNavigator.GoToPage(browser.Driver, targetPage, cancellationToken);
     }
 
     private static IReadOnlyList<int> BuildPageOrder(int preferredPage, int totalPages)

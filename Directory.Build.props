@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
     <Authors>kanexis</Authors>
-    <VersionPrefix>0.9.1</VersionPrefix>
+    <VersionPrefix>0.9.3</VersionPrefix>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/kanexis/ReestrParse</RepositoryUrl>
     <PackageProjectUrl>https://github.com/kanexis/ReestrParse</PackageProjectUrl>

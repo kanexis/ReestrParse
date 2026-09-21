@@ -1001,3 +1001,7 @@ Details phase создаёт несколько независимых worker-з
 - data-quality warnings.
 
 Это позволяет расширять модель без горизонтального DataGrid на десятки колонок.
+
+## Card-open recovery (v0.9.3)
+
+Catalog row click is not treated as success by itself. A Worker verifies that the browser actually entered an organization card. If a DevExpress callback/click stalls, the Worker performs up to five complete attempts. Every attempt starts from the catalog URL, reapplies the same filters, waits for a stable grid, navigates to the target page, finds the row again, clicks it, and verifies card DOM/URL. Stale row elements are never reused across attempts.

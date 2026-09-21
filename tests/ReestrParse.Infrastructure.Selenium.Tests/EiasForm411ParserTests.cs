@@ -80,4 +80,30 @@ public sealed class EiasForm411ParserTests
         Assert.Equal(string.Empty, result.Email);
         Assert.Contains(result.DataWarnings, x => x.Contains("Код 9", StringComparison.OrdinalIgnoreCase));
     }
+    [Fact]
+    public void Parse_EmptyValueCell_DoesNotShiftToInstructionCell()
+    {
+        const string html = """
+            <div id="sheets"><div><table>
+              <tr><td class="row-number">2</td><td colspan="5">Форма 4.1.1 Общая информация об организации</td></tr>
+              <tr><td class="row-number">5</td><td class="service"></td><td>2.1</td><td>Наименование</td><td>ООО Тест</td></tr>
+              <tr><td class="row-number">6</td><td class="service"></td><td>2.2</td><td>ИНН</td><td>1234567890</td></tr>
+              <tr><td class="row-number">7</td><td class="service"></td><td>9</td><td>адрес электронной почты</td><td></td><td>Плата за подключение (технологическое присоединение)</td></tr>
+            </table></div></div>
+            """;
+
+        var source = new OrganizationReference(
+            "", "ООО Тест", "1234567890", "", "Алтайский край",
+            "Теплоснабжение", null, 1);
+
+        var result = EiasForm411Parser.Parse(html, source, "https://detail", "https://template");
+
+        Assert.Equal("ООО Тест", result.Name);
+        Assert.Equal("1234567890", result.Inn);
+        Assert.Equal(string.Empty, result.Email);
+        Assert.DoesNotContain(
+            result.DataWarnings,
+            x => x.Contains("Плата за подключение", StringComparison.OrdinalIgnoreCase));
+    }
+
 }

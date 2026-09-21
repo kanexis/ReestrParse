@@ -18,14 +18,28 @@ internal static partial class EiasForm1Parser
     {
         var warnings = new List<string>();
 
-        var phones = ValuesForCodeOrChildren(values, "9")
+        var phones = EiasFormTableReader.AllByCodeOrLabel(
+                values,
+                "9",
+                "контактные телефоны регулируемой организации",
+                "контактный телефон регулируемой организации",
+                "контактные телефоны")
             .Select(EiasFormTableReader.Normalize)
-            .Where(EiasFormTableReader.IsMeaningful)
+            .Where(LooksLikePhone)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
         var emailRaw = EiasFormTableReader.First(values, "11");
         var email = ExtractEmail(emailRaw);
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            emailRaw = EiasFormTableReader.FirstByLabel(
+                values,
+                "адрес электронной почты",
+                "электронная почта",
+                "e-mail");
+            email = ExtractEmail(emailRaw);
+        }
         if (EiasFormTableReader.IsMeaningful(emailRaw) && string.IsNullOrWhiteSpace(email))
             warnings.Add($"Код 11 формы 1 содержит значение, не похожее на email: «{emailRaw}».");
 
@@ -34,35 +48,72 @@ internal static partial class EiasForm1Parser
 
         return new OrganizationContactDetails(
             OrganizationId: source.OrganizationId,
-            Name: EiasFormTableReader.First(values, "1", source.Name),
+            Name: FirstOrFallback(
+                EiasFormTableReader.FirstByCodeOrLabel(
+                    values,
+                    "1",
+                    "наименование регулируемой организации",
+                    "наименование организации"),
+                source.Name),
             Inn: source.Inn,
             Kpp: source.Kpp,
             Phones: phones,
             Email: email,
-            Website: EiasFormTableReader.First(values, "10"),
+            Website: NormalizeWebsite(EiasFormTableReader.FirstByCodeOrLabel(
+                values,
+                "10",
+                "официальный сайт",
+                "адрес сайта",
+                "сайт")),
             ResponsibleFullName: string.Empty,
             ResponsiblePosition: string.Empty,
             ResponsiblePhone: string.Empty,
             ResponsibleEmail: string.Empty,
             ManagerFullName: JoinName(
-                EiasFormTableReader.First(values, "6.1"),
-                EiasFormTableReader.First(values, "6.2"),
-                EiasFormTableReader.First(values, "6.3")),
-            PostalAddress: EiasFormTableReader.First(values, "7"),
-            LocationAddress: EiasFormTableReader.First(values, "8"),
+                EiasFormTableReader.FirstByCodeOrLabel(values, "6.1", "фамилия руководителя"),
+                EiasFormTableReader.FirstByCodeOrLabel(values, "6.2", "имя руководителя"),
+                EiasFormTableReader.FirstByCodeOrLabel(values, "6.3", "отчество руководителя")),
+            PostalAddress: EiasFormTableReader.FirstByCodeOrLabel(
+                values,
+                "7",
+                "почтовый адрес"),
+            LocationAddress: EiasFormTableReader.FirstByCodeOrLabel(
+                values,
+                "8",
+                "место нахождения",
+                "местонахождение",
+                "юридический адрес"),
             DetailUrl: detailUrl,
             TemplateUrl: templateUrl,
             HasForm1: true,
             Warnings: warnings);
     }
 
-    private static IEnumerable<string> ValuesForCodeOrChildren(
-        IReadOnlyDictionary<string, List<string>> values,
-        string code)
-        => values
-            .Where(x => string.Equals(x.Key, code, StringComparison.OrdinalIgnoreCase) ||
-                        x.Key.StartsWith(code + ".", StringComparison.OrdinalIgnoreCase))
-            .SelectMany(x => x.Value);
+    private static bool LooksLikePhone(string? value)
+    {
+        if (!EiasFormTableReader.IsMeaningful(value))
+            return false;
+
+        var digits = value!.Count(char.IsDigit);
+        return digits >= 6 && digits <= 20;
+    }
+
+    private static string NormalizeWebsite(string? value)
+    {
+        if (!EiasFormTableReader.IsMeaningful(value))
+            return string.Empty;
+
+        var normalized = EiasFormTableReader.Normalize(value);
+        if (normalized.Contains(' ') || !normalized.Contains('.'))
+            return string.Empty;
+
+        return normalized;
+    }
+
+    private static string FirstOrFallback(string? value, string fallback)
+        => EiasFormTableReader.IsMeaningful(value)
+            ? EiasFormTableReader.Normalize(value)
+            : fallback;
 
     private static string JoinName(params string[] parts)
         => string.Join(" ", parts.Where(EiasFormTableReader.IsMeaningful));

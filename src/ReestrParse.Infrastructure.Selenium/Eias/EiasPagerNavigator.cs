@@ -21,26 +21,56 @@ internal static class EiasPagerNavigator
         if (targetPage < 1)
             throw new ArgumentOutOfRangeException(nameof(targetPage));
 
-        cancellationToken.ThrowIfCancellationRequested();
-        SafeDefaultContent(driver);
+        Exception? lastException = null;
 
-        var state = EiasLivePager.Read(driver);
-
-        if (state.CurrentPage == targetPage)
-            return;
-
-        if (targetPage > state.TotalPages)
+        // DevExpress callback иногда «съедает» click: pager остаётся на page 1.
+        // Вместо одного 60-секундного ожидания делаем три независимые попытки
+        // разными способами клика.
+        for (var attempt = 0; attempt < 3; attempt++)
         {
-            throw new InvalidOperationException(
-                $"Запрошена страница {targetPage}, но актуальный видимый pager показывает только " +
-                $"{state.TotalPages} страниц. {state.Summary}");
+            cancellationToken.ThrowIfCancellationRequested();
+            SafeDefaultContent(driver);
+
+            var state = EiasLivePager.Read(driver);
+            if (state.CurrentPage == targetPage)
+                return;
+
+            if (targetPage > state.TotalPages)
+            {
+                throw new InvalidOperationException(
+                    $"Запрошена страница {targetPage}, но актуальный видимый pager показывает только " +
+                    $"{state.TotalPages} страниц. {state.Summary}");
+            }
+
+            try
+            {
+                ScrollPagerIntoView(driver, cancellationToken);
+                ClickPageLink(driver, targetPage, attempt, cancellationToken);
+
+                if (WaitForPage(driver, targetPage, cancellationToken, TimeSpan.FromSeconds(20)))
+                    return;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (InvalidOperationException)
+            {
+                throw;
+            }
+            catch (WebDriverException ex)
+            {
+                lastException = ex;
+            }
+
+            Thread.Sleep(350);
         }
 
-        var previousSignature = ReadRowsSignature(driver);
-
-        ScrollPagerIntoView(driver, cancellationToken);
-        ClickPageLink(driver, targetPage, cancellationToken);
-        WaitForPage(driver, targetPage, previousSignature, cancellationToken);
+        var finalState = EiasLivePager.Read(driver);
+        throw new WebDriverTimeoutException(
+            $"Не удалось перейти на страницу {targetPage} DevExpress-таблицы после 3 попыток " +
+            $"(Actions -> native Click -> JS/href). Текущий pager: {finalState.Summary}",
+            lastException);
     }
 
     private static void ScrollPagerIntoView(
@@ -153,11 +183,12 @@ internal static class EiasPagerNavigator
     private static void ClickPageLink(
         IWebDriver driver,
         int targetPage,
+        int strategy,
         CancellationToken cancellationToken)
     {
         Exception? lastException = null;
 
-        for (var attempt = 1; attempt <= 8; attempt++)
+        for (var attempt = 1; attempt <= 5; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -185,12 +216,35 @@ internal static class EiasPagerNavigator
                         $"В актуальном pager не найдена ссылка страницы {targetPage}.");
                 }
 
-                new Actions(driver)
-                    .ScrollToElement(pageLink)
-                    .MoveToElement(pageLink)
-                    .Pause(TimeSpan.FromMilliseconds(120))
-                    .Click(pageLink)
-                    .Perform();
+                switch (strategy)
+                {
+                    case 0:
+                        new Actions(driver)
+                            .ScrollToElement(pageLink)
+                            .MoveToElement(pageLink)
+                            .Pause(TimeSpan.FromMilliseconds(120))
+                            .Click(pageLink)
+                            .Perform();
+                        break;
+
+                    case 1:
+                        pageLink.Click();
+                        break;
+
+                    default:
+                        var href = pageLink.GetAttribute("href") ?? string.Empty;
+                        if (href.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            ((IJavaScriptExecutor)driver).ExecuteScript(
+                                href["javascript:".Length..]);
+                        }
+                        else
+                        {
+                            ((IJavaScriptExecutor)driver).ExecuteScript(
+                                "arguments[0].click();", pageLink);
+                        }
+                        break;
+                }
 
                 return;
             }
@@ -228,24 +282,24 @@ internal static class EiasPagerNavigator
         }
 
         throw new WebDriverException(
-            $"Не удалось кликнуть штатную ссылку страницы {targetPage} в актуальном pager.",
+            $"Не удалось кликнуть ссылку страницы {targetPage} (strategy={strategy}).",
             lastException);
     }
 
-    private static void WaitForPage(
+    private static bool WaitForPage(
         IWebDriver driver,
         int targetPage,
-        string previousSignature,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TimeSpan timeout)
     {
-        var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(60))
+        var wait = new WebDriverWait(driver, timeout)
         {
             PollingInterval = TimeSpan.FromMilliseconds(250)
         };
 
         try
         {
-            wait.Until(d =>
+            return wait.Until(d =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -269,16 +323,24 @@ internal static class EiasPagerNavigator
 
                         const lp = document.getElementById('ASPxGridView2_LP');
                         const ld = document.getElementById('ASPxGridView2_LD');
-                        return visible(lp) || visible(ld);
+                        let callback = false;
+                        try {
+                            if (window.ASPxGridView2 &&
+                                typeof window.ASPxGridView2.InCallback === 'function') {
+                                callback = !!window.ASPxGridView2.InCallback();
+                            }
+                        } catch (_) {}
+
+                        return callback || visible(lp) || visible(ld);
                         """));
 
                     if (loading)
                         return false;
 
-                    var signature = ReadRowsSignature(d);
-                    return !string.IsNullOrWhiteSpace(signature) &&
-                           (string.IsNullOrWhiteSpace(previousSignature) ||
-                            !string.Equals(signature, previousSignature, StringComparison.Ordinal));
+                    // Page-number берётся из актуального видимого pager. Вместе с
+                    // завершённым callback и существующими строками этого достаточно.
+                    // Сравнение первой строки с прошлой страницей давало false timeout.
+                    return !string.IsNullOrWhiteSpace(ReadRowsSignature(d));
                 }
                 catch (WebDriverException)
                 {
@@ -286,12 +348,9 @@ internal static class EiasPagerNavigator
                 }
             });
         }
-        catch (WebDriverTimeoutException ex)
+        catch (WebDriverTimeoutException)
         {
-            var state = EiasLivePager.Read(driver);
-            throw new WebDriverTimeoutException(
-                $"Ссылка страницы {targetPage} была нажата, но актуальная DevExpress-таблица " +
-                $"не перешла на неё за 60 секунд. Текущий pager: {state.Summary}", ex);
+            return false;
         }
     }
 

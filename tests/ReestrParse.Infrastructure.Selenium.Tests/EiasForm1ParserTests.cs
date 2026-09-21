@@ -44,4 +44,36 @@ public sealed class EiasForm1ParserTests
         Assert.Equal("1", details.ParsedForms);
         Assert.False(details.IsPartial);
     }
+
+    [Fact]
+    public void ParseValues_CollectsPhoneChildCodes()
+    {
+        var values = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["1"] = ["ООО Тепло"],
+            ["9.1"] = ["+7 3852 11-11-11"],
+            ["9.2"] = ["+7 3852 22-22-22"],
+            ["11"] = ["mail@example.ru"]
+        };
+
+        var source = new OrganizationReference(
+            ExternalId: "1",
+            Name: "ООО Тепло",
+            Inn: "2200000000",
+            Kpp: "220001001",
+            RegionName: "Алтайский край",
+            SphereName: "Теплоснабжение",
+            DetailUrl: null,
+            SourcePage: 1,
+            OrganizationId: "1",
+            RegionId: "2653",
+            SphereId: "WARM",
+            FormValue: "F_W_O_1;F_W_O_4_1_1;");
+
+        var result = EiasForm1Parser.ParseValues(values, source, "detail", "template");
+
+        Assert.Equal(2, result.Phones.Count);
+        Assert.Contains("+7 3852 11-11-11", result.Phones);
+        Assert.Contains("+7 3852 22-22-22", result.Phones);
+    }
 }
