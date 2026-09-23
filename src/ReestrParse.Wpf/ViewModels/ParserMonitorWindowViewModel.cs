@@ -16,17 +16,24 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
     private readonly IParserTelemetry _telemetry;
     private readonly Stopwatch _sessionStopwatch = new();
     private readonly List<TimeSpan> _itemDurations = [];
+    private readonly List<ParserLogEntryViewModel> _allLogs = [];
     private readonly DispatcherTimer _uiTimer; 
     private bool _disposed;
+    private bool _batchSessionActive;
 
     public ObservableCollection<ParserLogEntryViewModel> Logs { get; } = [];
     public ObservableCollection<string> LevelFilters { get; } =
         ["Все", "Ошибки", "Предупреждения", "Успешные", "Информация"];
+    public ObservableCollection<string> LogModeOptions { get; } =
+        ["Основные события", "Подробный лог"];
 
     public ICollectionView FilteredLogs { get; }
 
     [ObservableProperty]
     private string selectedLevelFilter = "Все";
+
+    [ObservableProperty]
+    private string selectedLogMode = "Основные события";
 
     [ObservableProperty]
     private string searchText = string.Empty;
@@ -85,6 +92,18 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
     [ObservableProperty]
     private string lastError = "Ошибок пока нет.";
 
+    [ObservableProperty]
+    private int warningEvents;
+
+    [ObservableProperty]
+    private int errorEvents;
+
+    [ObservableProperty]
+    private int retryEvents;
+
+    [ObservableProperty]
+    private int completedRegions;
+
     public ParserMonitorWindowViewModel(IParserTelemetry telemetry)
     {
         _telemetry = telemetry;
@@ -104,6 +123,7 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
     }
 
     partial void OnSelectedLevelFilterChanged(string value) => FilteredLogs.Refresh();
+    partial void OnSelectedLogModeChanged(string value) => FilteredLogs.Refresh();
     partial void OnSearchTextChanged(string value) => FilteredLogs.Refresh();
 
     private bool FilterLog(object item)
@@ -123,6 +143,9 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
         if (!levelMatches)
             return false;
 
+        if (SelectedLogMode == "Основные события" && !IsImportant(log.Source))
+            return false;
+
         if (string.IsNullOrWhiteSpace(SearchText))
             return true;
 
@@ -132,6 +155,28 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
                log.Operation.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
                log.Code.Contains(SearchText, StringComparison.OrdinalIgnoreCase) ||
                log.DataSource.Contains(SearchText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsImportant(ParserTelemetryEvent evt)
+    {
+        if (evt.Level is ParserLogLevel.Error or ParserLogLevel.Warning)
+            return true;
+
+        if (evt.Stage is ParserPipelineStage.Report or ParserPipelineStage.Batch or
+                         ParserPipelineStage.Completed or ParserPipelineStage.Cancelled or ParserPipelineStage.Failed)
+            return true;
+
+        if (!string.IsNullOrWhiteSpace(evt.Code) &&
+            (evt.Code.Contains("BACKOFF", StringComparison.OrdinalIgnoreCase) ||
+             evt.Code.Contains("RETRY", StringComparison.OrdinalIgnoreCase) ||
+             evt.Code.Contains("REPORT_", StringComparison.OrdinalIgnoreCase) ||
+             evt.Code.Contains("BATCH_", StringComparison.OrdinalIgnoreCase)))
+            return true;
+
+        return evt.Operation.Equals("Regions loaded", StringComparison.OrdinalIgnoreCase) ||
+               evt.Operation.Equals("Catalog completed", StringComparison.OrdinalIgnoreCase) ||
+               evt.Operation.Equals("Details crawl completed", StringComparison.OrdinalIgnoreCase) ||
+               evt.Operation.Equals("Pipeline completed", StringComparison.OrdinalIgnoreCase);
     }
 
     private void OnPublished(ParserTelemetryEvent evt)
@@ -145,7 +190,13 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
 
     private void Apply(ParserTelemetryEvent evt)
     {
-        if (evt.Operation.Equals("Catalog started", StringComparison.OrdinalIgnoreCase))
+        if (evt.Code?.Equals("BATCH_STARTED", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            ResetRuntimeMetrics(clearLogs: false);
+            _batchSessionActive = true;
+            _sessionStopwatch.Restart();
+        }
+        else if (evt.Operation.Equals("Catalog started", StringComparison.OrdinalIgnoreCase) && !_batchSessionActive)
         {
             ResetRuntimeMetrics(clearLogs: false);
             _sessionStopwatch.Restart();
@@ -155,10 +206,23 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
             _sessionStopwatch.Start();
         }
 
-        Logs.Add(new ParserLogEntryViewModel(evt));
+        var entry = new ParserLogEntryViewModel(evt);
+        Logs.Add(entry);
+        _allLogs.Add(entry);
+        while (_allLogs.Count > 100_000)
+            _allLogs.RemoveAt(0);
+
+        if (evt.Level == ParserLogLevel.Warning) WarningEvents++;
+        if (evt.Level == ParserLogLevel.Error) ErrorEvents++;
+        if (!string.IsNullOrWhiteSpace(evt.Code) &&
+            (evt.Code.Contains("RETRY", StringComparison.OrdinalIgnoreCase) ||
+             evt.Code.Contains("BACKOFF", StringComparison.OrdinalIgnoreCase)))
+            RetryEvents++;
+        if (evt.Code?.Equals("BATCH_REGION_COMPLETED", StringComparison.OrdinalIgnoreCase) == true)
+            CompletedRegions++;
 
         // Ограничиваем UI-коллекцию, чтобы многочасовой прогон не начал тормозить WPF.
-        while (Logs.Count > 5000)
+        while (Logs.Count > 3000)
             Logs.RemoveAt(0);
 
         CurrentStage = StageCaption(evt.Stage);
@@ -222,6 +286,12 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
             ElapsedText = FormatDuration(_sessionStopwatch.Elapsed);
         }
 
+        if (evt.Code?.Equals("BATCH_COMPLETED", StringComparison.OrdinalIgnoreCase) == true ||
+            evt.Stage is ParserPipelineStage.Cancelled or ParserPipelineStage.Failed)
+        {
+            _batchSessionActive = false;
+        }
+
         FilteredLogs.Refresh();
     }
 
@@ -283,6 +353,7 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
     private void ClearLogs()
     {
         Logs.Clear();
+        _allLogs.Clear();
         LastError = "Ошибок пока нет.";
     }
 
@@ -292,7 +363,10 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
     private void ResetRuntimeMetrics(bool clearLogs)
     {
         if (clearLogs)
+        {
             Logs.Clear();
+            _allLogs.Clear();
+        }
 
         TotalItems = 0;
         CompletedItems = 0;
@@ -307,6 +381,10 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
         AverageItemText = "—";
         EtaText = "—";
         ThroughputText = "—";
+        WarningEvents = 0;
+        ErrorEvents = 0;
+        RetryEvents = 0;
+        CompletedRegions = 0;
         CurrentOrganization = "—";
         CurrentOperation = "—";
         _itemDurations.Clear();
@@ -317,20 +395,20 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
     [RelayCommand]
     private void ExportLogs()
     {
-        var dialog = new SaveFileDialog
+        var dialog = new System.Windows.Forms.SaveFileDialog
         {
             Title = "Сохранить журнал парсинга",
             Filter = "CSV (*.csv)|*.csv|Текст (*.txt)|*.txt",
             FileName = $"reestrparse-log-{DateTime.Now:yyyyMMdd-HHmmss}.csv"
         };
 
-        if (dialog.ShowDialog() != true)
+        if (dialog.ShowDialog() != DialogResult.OK)
             return;
 
         using var writer = new StreamWriter(dialog.FileName, false, new System.Text.UTF8Encoding(true));
         writer.WriteLine("Time;Level;Stage;Operation;Worker;SourcePage;Position;Duration;Organization;INN;Code;DataSource;Message;Error");
 
-        foreach (var log in Logs)
+        foreach (var log in _allLogs)
         {
             writer.WriteLine(string.Join(";",
                 Csv(log.Time),
@@ -371,6 +449,8 @@ public partial class ParserMonitorWindowViewModel : ObservableObject, IDisposabl
         ParserPipelineStage.Completed => "Завершено",
         ParserPipelineStage.Cancelled => "Отменено",
         ParserPipelineStage.Failed => "Ошибка",
+        ParserPipelineStage.Report => "Excel-отчёт",
+        ParserPipelineStage.Batch => "Пакетная обработка",
         _ => "Ожидание"
     };
 

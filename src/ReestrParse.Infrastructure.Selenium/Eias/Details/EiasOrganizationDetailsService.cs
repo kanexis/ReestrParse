@@ -692,6 +692,7 @@ internal sealed class EiasOrganizationDetailsService(IParserTelemetry telemetry)
             ResponsiblePhone = FirstNonEmpty(primary.ResponsiblePhone, secondary.ResponsiblePhone),
             ResponsibleEmail = FirstNonEmpty(primary.ResponsibleEmail, secondary.ResponsibleEmail),
             ManagerFullName = FirstNonEmpty(primary.ManagerFullName, secondary.ManagerFullName),
+            ManagerEmail = FirstNonEmpty(primary.ManagerEmail, secondary.ManagerEmail),
             PostalAddress = FirstNonEmpty(primary.PostalAddress, secondary.PostalAddress),
             LocationAddress = FirstNonEmpty(primary.LocationAddress, secondary.LocationAddress),
             HasForm411 = primary.HasForm411 || secondary.HasForm411,

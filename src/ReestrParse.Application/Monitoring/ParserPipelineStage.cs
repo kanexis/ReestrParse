@@ -18,5 +18,7 @@ public enum ParserPipelineStage
     DetailsCompleted = 13,
     Completed = 14,
     Cancelled = 15,
-    Failed = 16
+    Failed = 16,
+    Report = 17,
+    Batch = 18
 }

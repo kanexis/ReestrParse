@@ -27,7 +27,7 @@
                    FontSize="26"
                    FontWeight="SemiBold"
                    Foreground="{StaticResource TextBrush}" />
-        <TextBlock Text="Время, workers, страницы, организации, ошибки и подробный поток событий."
+        <TextBlock Text="Ключевые события по умолчанию; полный telemetry остаётся доступен в подробном режиме и CSV."
                    Foreground="{StaticResource MutedBrush}"
                    Margin="0,6,0,0" />
       </StackPanel>
@@ -79,12 +79,9 @@
             <Run Text="{Binding TotalItems, Mode=OneWay}" />
           </TextBlock>
           <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11">
-            <Run Text="OK " />
-            <Run Text="{Binding SucceededItems, Mode=OneWay}" />
-            <Run Text=" · PART " />
-            <Run Text="{Binding PartialItems, Mode=OneWay}" />
-            <Run Text=" · ERR " />
-            <Run Text="{Binding FailedItems, Mode=OneWay}" />
+            <Run Text="OK " /><Run Text="{Binding SucceededItems, Mode=OneWay}" />
+            <Run Text=" · PART " /><Run Text="{Binding PartialItems, Mode=OneWay}" />
+            <Run Text=" · ERR " /><Run Text="{Binding FailedItems, Mode=OneWay}" />
           </TextBlock>
         </StackPanel>
       </Border>
@@ -94,8 +91,7 @@
           <TextBlock Text="Скорость" Foreground="{StaticResource MutedBrush}" FontSize="11" />
           <TextBlock Text="{Binding ThroughputText}" FontSize="17" FontWeight="SemiBold" />
           <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11">
-            <Run Text="среднее " />
-            <Run Text="{Binding AverageItemText}" />
+            <Run Text="среднее " /><Run Text="{Binding AverageItemText}" />
           </TextBlock>
         </StackPanel>
       </Border>
@@ -105,8 +101,7 @@
           <TextBlock Text="Время / ETA" Foreground="{StaticResource MutedBrush}" FontSize="11" />
           <TextBlock Text="{Binding ElapsedText}" FontSize="17" FontWeight="SemiBold" />
           <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11">
-            <Run Text="осталось ~ " />
-            <Run Text="{Binding EtaText}" />
+            <Run Text="осталось ~ " /><Run Text="{Binding EtaText}" />
           </TextBlock>
         </StackPanel>
       </Border>
@@ -119,10 +114,10 @@
             <Run Text=" workers" />
           </TextBlock>
           <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11">
-            <Run Text="стр. " />
-            <Run Text="{Binding CurrentPage, Mode=OneWay}" />
-            <Run Text="/" />
-            <Run Text="{Binding TotalPages, Mode=OneWay}" />
+            <Run Text="стр. " /><Run Text="{Binding CurrentPage, Mode=OneWay}" /><Run Text="/" /><Run Text="{Binding TotalPages, Mode=OneWay}" />
+            <Run Text=" · W " /><Run Text="{Binding WarningEvents, Mode=OneWay}" />
+            <Run Text=" · E " /><Run Text="{Binding ErrorEvents, Mode=OneWay}" />
+            <Run Text=" · R " /><Run Text="{Binding RetryEvents, Mode=OneWay}" />
           </TextBlock>
         </StackPanel>
       </Border>
@@ -160,11 +155,16 @@
                      Value="{Binding ProgressPercent}"
                      Height="8" />
 
-        <TextBlock Grid.Row="4"
-                   Text="{Binding LastError}"
-                   Foreground="#B91C1C"
-                   FontSize="11"
-                   TextWrapping="Wrap" />
+        <DockPanel Grid.Row="4">
+          <TextBlock Text="{Binding LastError}"
+                     Foreground="#B91C1C"
+                     FontSize="11"
+                     TextWrapping="Wrap"
+                     DockPanel.Dock="Left" />
+          <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="11" DockPanel.Dock="Right" Margin="16,0,0,0">
+            <Run Text="регионов завершено: " /><Run Text="{Binding CompletedRegions, Mode=OneWay}" />
+          </TextBlock>
+        </DockPanel>
       </Grid>
     </Border>
 
@@ -177,15 +177,21 @@
 
       <Grid>
         <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="170" />
+          <ColumnDefinition Width="190" />
+          <ColumnDefinition Width="12" />
+          <ColumnDefinition Width="160" />
           <ColumnDefinition Width="12" />
           <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <ComboBox ItemsSource="{Binding LevelFilters}"
+        <ComboBox ItemsSource="{Binding LogModeOptions}"
+                  SelectedItem="{Binding SelectedLogMode}" />
+
+        <ComboBox Grid.Column="2"
+                  ItemsSource="{Binding LevelFilters}"
                   SelectedItem="{Binding SelectedLevelFilter}" />
 
-        <TextBox Grid.Column="2"
+        <TextBox Grid.Column="4"
                  Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                  ToolTip="Поиск по операции, организации, ИНН, коду ошибки, источнику или сообщению" />
       </Grid>
@@ -212,7 +218,6 @@
             <DataGridTextColumn Header="Операция" Binding="{Binding Operation}" Width="175" />
             <DataGridTextColumn Header="W" Binding="{Binding Worker}" Width="55" />
             <DataGridTextColumn Header="Позиция" Binding="{Binding Position}" Width="85" />
-
             <DataGridTextColumn Header="Время" Binding="{Binding Duration}" Width="85" />
             <DataGridTextColumn Header="Организация" Binding="{Binding Organization}" Width="260" />
             <DataGridTextColumn Header="ИНН" Binding="{Binding Inn}" Width="115" />

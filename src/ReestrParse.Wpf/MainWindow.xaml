@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ReestrParse"
         Width="1660"
-        Height="920"
+        Height="940"
         MinWidth="1180"
-        MinHeight="720"
+        MinHeight="740"
         WindowStartupLocation="CenterScreen"
         Background="{StaticResource BackgroundBrush}"
         FontFamily="Segoe UI">
@@ -15,6 +15,7 @@
       <ColumnDefinition Width="*" />
     </Grid.ColumnDefinitions>
 
+    <!-- Classic sidebar from v0.9.6 -->
     <Border Grid.Column="0" Background="{StaticResource SidebarBrush}">
       <Grid Margin="24">
         <Grid.RowDefinitions>
@@ -116,9 +117,17 @@
                 <TextBlock Text="4" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
               <StackPanel Margin="10,0,0,0">
-                <TextBlock Text="Результат" Foreground="#CBD5E1" />
-                <TextBlock Text="{Binding ExportStepStatus}" Foreground="#64748B" FontSize="11" />
+                <TextBlock Text="Результат / Excel" Foreground="#CBD5E1" />
+                <TextBlock Text="{Binding ExportStepStatus}" Foreground="#64748B" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="170" />
               </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <Border Margin="0,20,0,0" Background="#111827" BorderBrush="#334155" BorderThickness="1" CornerRadius="8" Padding="12">
+            <StackPanel>
+              <TextBlock Text="EMAIL PRIORITY" Foreground="#64748B" FontSize="10" FontWeight="SemiBold" />
+              <TextBlock Text="Руководитель" Foreground="White" Margin="0,5,0,0" FontWeight="SemiBold" />
+              <TextBlock Text="→ организация → прочие контакты" Foreground="#94A3B8" FontSize="11" Margin="0,2,0,0" />
             </StackPanel>
           </Border>
         </StackPanel>
@@ -127,7 +136,7 @@
           <StackPanel>
             <TextBlock Text="Stack" Foreground="#94A3B8" FontSize="11" />
             <TextBlock Text=".NET 10 · WPF · MVVM" Foreground="White" Margin="0,3,0,0" />
-            <TextBlock Text="Selenium · AngleSharp" Foreground="#60A5FA" FontSize="11" Margin="0,2,0,0" />
+            <TextBlock Text="Selenium · AngleSharp · XLSX" Foreground="#60A5FA" FontSize="11" Margin="0,2,0,0" />
           </StackPanel>
         </Border>
       </Grid>
@@ -150,7 +159,7 @@
                      FontSize="28"
                      FontWeight="SemiBold"
                      Foreground="{StaticResource TextBrush}" />
-          <TextBlock Text="Сначала собираем каталог, затем параллельно читаем карточки, форму 4.1.1 и дополнительную форму 1.0.1."
+          <TextBlock Text="Собираем каталог и карточки ЕИАС, выбираем приоритетный email и формируем итоговый Excel-реестр."
                      Foreground="{StaticResource MutedBrush}"
                      FontSize="13"
                      Margin="0,7,0,0" />
@@ -164,6 +173,7 @@
         </Border>
       </DockPanel>
 
+      <!-- Classic control panel, extended instead of redesigned -->
       <Border Grid.Row="2"
               Background="{StaticResource SurfaceBrush}"
               BorderBrush="{StaticResource BorderBrush}"
@@ -171,61 +181,147 @@
               CornerRadius="12"
               Padding="20">
         <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="2.1*" />
-            <ColumnDefinition Width="16" />
-            <ColumnDefinition Width="1.3*" />
-            <ColumnDefinition Width="16" />
-            <ColumnDefinition Width="110" />
-            <ColumnDefinition Width="16" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="16" />
+            <RowDefinition Height="1" />
+            <RowDefinition Height="16" />
+            <RowDefinition Height="Auto" />
+          </Grid.RowDefinitions>
 
-          <StackPanel>
-            <TextBlock Text="Регион" FontWeight="SemiBold" Margin="0,0,0,7" />
-            <ComboBox ItemsSource="{Binding Regions}"
-                      SelectedItem="{Binding SelectedRegion}"
-                      DisplayMemberPath="Name"
-                      MinWidth="300" />
-          </StackPanel>
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="2.1*" />
+              <ColumnDefinition Width="16" />
+              <ColumnDefinition Width="1.3*" />
+              <ColumnDefinition Width="16" />
+              <ColumnDefinition Width="110" />
+              <ColumnDefinition Width="16" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-          <StackPanel Grid.Column="2">
-            <TextBlock Text="Сфера" FontWeight="SemiBold" Margin="0,0,0,7" />
-            <ComboBox ItemsSource="{Binding Spheres}"
-                      SelectedItem="{Binding SelectedSphere}"
-                      DisplayMemberPath="Name"
-                      MinWidth="210" />
-          </StackPanel>
-
-          <StackPanel Grid.Column="4">
-            <TextBlock Text="Workers" FontWeight="SemiBold" Margin="0,0,0,7" />
-            <ComboBox ItemsSource="{Binding ParallelismOptions}"
-                      SelectedItem="{Binding SelectedParallelism}"
-                      MinWidth="90" />
-          </StackPanel>
-
-          <StackPanel Grid.Column="6" VerticalAlignment="Bottom">
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-              <Button Content="Обновить регионы"
-                      Command="{Binding LoadRegionsCommand}"
-                      Background="#EEF2FF"
-                      Foreground="#3730A3"
-                      Margin="0,0,10,0" />
-              <Button Content="1. Загрузить организации"
-                      Command="{Binding LoadOrganizationsCommand}"
-                      Style="{StaticResource PrimaryButton}" />
+            <StackPanel>
+              <TextBlock Text="Регион" FontWeight="SemiBold" Margin="0,0,0,7" />
+              <ComboBox ItemsSource="{Binding Regions}"
+                        SelectedItem="{Binding SelectedRegion}"
+                        DisplayMemberPath="Name"
+                        MinWidth="250" />
             </StackPanel>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-              <CheckBox Content="Фоновые Chrome"
-                        IsChecked="{Binding HeadlessDetails}"
-                        VerticalAlignment="Center"
-                        Margin="0,0,12,0" />
-              <Button Content="2. Загрузить данные форм"
-                      Command="{Binding LoadContactsCommand}"
-                      Background="#0F766E"
-                      Foreground="White" />
+
+            <StackPanel Grid.Column="2">
+              <TextBlock Text="Сфера" FontWeight="SemiBold" Margin="0,0,0,7" />
+              <ComboBox ItemsSource="{Binding Spheres}"
+                        SelectedItem="{Binding SelectedSphere}"
+                        DisplayMemberPath="Name"
+                        MinWidth="170" />
             </StackPanel>
-          </StackPanel>
+
+            <StackPanel Grid.Column="4">
+              <TextBlock Text="Workers" FontWeight="SemiBold" Margin="0,0,0,7" />
+              <ComboBox ItemsSource="{Binding ParallelismOptions}"
+                        SelectedItem="{Binding SelectedParallelism}"
+                        MinWidth="90" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="6" VerticalAlignment="Bottom">
+              <StackPanel Orientation="Horizontal" Margin="0,0,0,8" HorizontalAlignment="Right">
+                <Button Content="Обновить регионы"
+                        Command="{Binding LoadRegionsCommand}"
+                        Background="#EEF2FF"
+                        Foreground="#3730A3"
+                        Margin="0,0,10,0" />
+                <Button Content="1. Загрузить организации"
+                        Command="{Binding LoadOrganizationsCommand}"
+                        Style="{StaticResource PrimaryButton}" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <CheckBox Content="Фоновые Chrome"
+                          IsChecked="{Binding HeadlessDetails}"
+                          VerticalAlignment="Center"
+                          Margin="0,0,12,0" />
+                <Button Content="2. Загрузить данные форм"
+                        Command="{Binding LoadContactsCommand}"
+                        Background="#0F766E"
+                        Foreground="White" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                <Button Content="Текущий регион полностью"
+                        Command="{Binding RunCurrentRegionPipelineCommand}"
+                        Background="#EEF2FF"
+                        Foreground="#3730A3"
+                        Margin="0,0,8,0" />
+                <Button Content="Все регионы по очереди"
+                        Command="{Binding RunAllRegionsCommand}"
+                        Background="#0F766E"
+                        Foreground="White" />
+              </StackPanel>
+            </StackPanel>
+          </Grid>
+
+          <Border Grid.Row="2" Background="#E5E7EB" />
+
+          <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="250" />
+              <ColumnDefinition Width="16" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="16" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <StackPanel>
+              <TextBlock Text="Excel-отчёт" FontWeight="SemiBold" Margin="0,0,0,7" />
+              <ComboBox ItemsSource="{Binding ReportModeOptions}"
+                        SelectedItem="{Binding SelectedReportMode}" />
+              <TextBlock Text="{Binding ReportModeHint}"
+                         Foreground="{StaticResource MutedBrush}"
+                         FontSize="10.5"
+                         TextWrapping="Wrap"
+                         Margin="0,5,0,0" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="2">
+              <TextBlock Text="Папка для файлов" FontWeight="SemiBold" Margin="0,0,0,7" />
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="8" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBox Text="{Binding OutputFolder, UpdateSourceTrigger=PropertyChanged}" />
+                <Button Grid.Column="2"
+                        Content="Выбрать…"
+                        Command="{Binding BrowseOutputFolderCommand}"
+                        Background="#F3F4F6"
+                        Foreground="#374151" />
+              </Grid>
+              <WrapPanel Margin="0,9,0,0">
+                <CheckBox Content="Оставлять без email" IsChecked="{Binding IncludeWithoutEmail}" Margin="0,0,16,4" />
+                <CheckBox Content="Включать ошибки" IsChecked="{Binding IncludeFailedOrganizations}" Margin="0,0,16,4" />
+                <CheckBox Content="Автосохранять общий файл" IsChecked="{Binding AutoSaveAfterRegion}" Margin="0,0,16,4" />
+                <CheckBox Content="Продолжать после ошибки региона" IsChecked="{Binding ContinueAfterRegionError}" Margin="0,0,16,4" />
+                <CheckBox Content="Открыть после сохранения" IsChecked="{Binding OpenReportAfterSave}" Margin="0,0,0,4" />
+              </WrapPanel>
+            </StackPanel>
+
+            <StackPanel Grid.Column="4" VerticalAlignment="Bottom">
+              <Button Content="Сохранить Excel"
+                      Command="{Binding ExportCurrentRegionCommand}"
+                      Style="{StaticResource PrimaryButton}"
+                      Margin="0,0,0,8" />
+              <StackPanel Orientation="Horizontal">
+                <Button Content="Открыть папку"
+                        Command="{Binding OpenOutputFolderCommand}"
+                        Background="#F3F4F6"
+                        Foreground="#374151"
+                        Margin="0,0,8,0" />
+                <Button Content="Последний Excel"
+                        Command="{Binding OpenLastReportCommand}"
+                        Background="#EEF2FF"
+                        Foreground="#3730A3" />
+              </StackPanel>
+            </StackPanel>
+          </Grid>
         </Grid>
       </Border>
 
@@ -251,20 +347,20 @@
               <TextBlock Foreground="{StaticResource MutedBrush}" FontSize="12">
                 <Run Text="Всего: " />
                 <Run Text="{Binding Organizations.Count, Mode=OneWay}" FontWeight="SemiBold" />
-                <Run Text=" · данные форм заполняются по мере завершения workers" />
+                <Run Text=" · в Excel: Наименование · ИНН · приоритетный Email" />
               </TextBlock>
             </StackPanel>
 
             <TextBox Grid.Column="1"
                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                     ToolTip="Поиск по названию, ИНН, КПП, контактам, формам, системам и территориям"
+                     ToolTip="Поиск по названию, ИНН, email, источнику email, статусу или ошибке"
                      VerticalAlignment="Center" />
           </Grid>
 
           <DataGrid Grid.Row="1"
                     ItemsSource="{Binding FilteredOrganizations}"
                     AutoGenerateColumns="False"
-                    IsReadOnly="True"
+                    IsReadOnly="False"
                     CanUserAddRows="False"
                     HeadersVisibility="Column"
                     GridLinesVisibility="Horizontal"
@@ -281,9 +377,9 @@
                 <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="0,1,0,1" Padding="18,12">
                   <Grid>
                     <Grid.ColumnDefinitions>
-                      <ColumnDefinition Width="220" />
+                      <ColumnDefinition Width="155" />
                       <ColumnDefinition Width="*" />
-                      <ColumnDefinition Width="220" />
+                      <ColumnDefinition Width="155" />
                       <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
@@ -291,58 +387,42 @@
                       <RowDefinition Height="Auto" />
                       <RowDefinition Height="Auto" />
                       <RowDefinition Height="Auto" />
-                      <RowDefinition Height="Auto" />
-                      <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <TextBlock Text="Распознано форм" Foreground="#64748B" FontSize="11" />
-                    <TextBlock Grid.Column="1" Text="{Binding ParsedForms}" FontWeight="SemiBold" />
-                    <TextBlock Grid.Column="2" Text="Дата раскрытия" Foreground="#64748B" FontSize="11" />
-                    <TextBlock Grid.Column="3" Text="{Binding DisclosureUpdatedAt}" />
+                    <TextBlock Text="Источник email" Foreground="#64748B" FontSize="11" />
+                    <TextBlock Grid.Column="1" Text="{Binding EmailSource}" FontWeight="SemiBold" />
+                    <TextBlock Grid.Column="2" Text="Статус" Foreground="#64748B" FontSize="11" />
+                    <TextBlock Grid.Column="3" Text="{Binding ContactStatus}" />
 
-                    <TextBlock Grid.Row="1" Text="Сайт" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
-                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Website}" TextWrapping="Wrap" Margin="0,7,12,0" />
-                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Должность ответственного" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
-                    <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding ResponsiblePosition}" TextWrapping="Wrap" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="1" Text="Руководитель" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Manager}" TextWrapping="Wrap" Margin="0,7,12,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Email руководителя" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding ManagerEmail}" TextWrapping="Wrap" Margin="0,7,0,0" />
 
-                    <TextBlock Grid.Row="2" Text="Почтовый адрес" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
-                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PostalAddress}" TextWrapping="Wrap" Margin="0,7,12,0" />
-                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Адрес местонахождения" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
-                    <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding LocationAddress}" TextWrapping="Wrap" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="2" Text="Формы / стр." Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,7,12,0">
+                      <Run Text="{Binding ParsedForms}" /><Run Text=" · стр. " /><Run Text="{Binding SourcePage}" />
+                    </TextBlock>
+                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Контакты / диагностика" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding DataWarnings}" TextWrapping="Wrap" Foreground="#92400E" Margin="0,7,0,0" />
 
-                    <TextBlock Grid.Row="3" Text="Системы инфраструктуры" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
-                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding InfrastructureSystems}" TextWrapping="Wrap" Margin="0,7,12,0" />
-                    <TextBlock Grid.Row="3" Grid.Column="2" Text="Виды деятельности" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
-                    <TextBlock Grid.Row="3" Grid.Column="3" Text="{Binding RegulatedActivities}" TextWrapping="Wrap" Margin="0,7,0,0" />
-
-                    <TextBlock Grid.Row="4" Text="Территория оказания услуг" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
-                    <TextBlock Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding ServiceTerritory}" TextWrapping="Wrap" Margin="0,7,0,0" />
-
-                    <TextBlock Grid.Row="5" Text="Диагностика данных" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
-                    <TextBlock Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding DataWarnings}" TextWrapping="Wrap" Foreground="#92400E" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="3" Text="Ошибка" Foreground="#64748B" FontSize="11" Margin="0,7,0,0" />
+                    <TextBlock Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3" Text="{Binding ContactError}" TextWrapping="Wrap" Foreground="#B91C1C" Margin="0,7,0,0" />
                   </Grid>
                 </Border>
               </DataTemplate>
             </DataGrid.RowDetailsTemplate>
             <DataGrid.Columns>
-              <DataGridTextColumn Header="Организация" Binding="{Binding Name}" Width="310" />
-              <DataGridTextColumn Header="ИНН" Binding="{Binding Inn}" Width="120" />
-              <DataGridTextColumn Header="КПП" Binding="{Binding Kpp}" Width="115" />
-              <DataGridTextColumn Header="orgId" Binding="{Binding OrganizationId}" Width="100" />
-              <DataGridTextColumn Header="Телефон организации" Binding="{Binding Phones}" Width="185" />
-              <DataGridTextColumn Header="Email организации" Binding="{Binding Email}" Width="210" />
-              <DataGridTextColumn Header="Ответственное лицо" Binding="{Binding ResponsiblePerson}" Width="220" />
-              <DataGridTextColumn Header="Телефон ответственного" Binding="{Binding ResponsiblePhone}" Width="180" />
-              <DataGridTextColumn Header="Email ответственного" Binding="{Binding ResponsibleEmail}" Width="210" />
-              <DataGridTextColumn Header="Руководитель" Binding="{Binding Manager}" Width="210" />
-              <DataGridTextColumn Header="Статус" Binding="{Binding ContactStatus}" Width="115" />
-              <DataGridTextColumn Header="Ошибка" Binding="{Binding ContactError}" Width="260" />
-              <DataGridTextColumn Header="Стр." Binding="{Binding SourcePage}" Width="70" />
+              <DataGridCheckBoxColumn Header="В отчёт" Binding="{Binding IncludeInReport, UpdateSourceTrigger=PropertyChanged}" Width="72" />
+              <DataGridTextColumn Header="Наименование" Binding="{Binding Name}" Width="*" IsReadOnly="True" />
+              <DataGridTextColumn Header="ИНН" Binding="{Binding Inn}" Width="150" IsReadOnly="True" />
+              <DataGridTextColumn Header="Email" Binding="{Binding PreferredEmail}" Width="340" IsReadOnly="True" />
             </DataGrid.Columns>
           </DataGrid>
         </Grid>
       </Border>
 
+      <!-- Original bottom progress bar, enriched with batch controls -->
       <Border Grid.Row="6"
               Background="#EFF6FF"
               BorderBrush="#BFDBFE"
@@ -352,14 +432,18 @@
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="250" />
-            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="270" />
             <ColumnDefinition Width="Auto" />
           </Grid.ColumnDefinitions>
 
           <StackPanel>
-            <TextBlock Text="{Binding ProgressMessage}" Foreground="#1E3A8A" TextWrapping="Wrap" />
-            <TextBlock Text="{Binding CurrentStage}" Foreground="#64748B" FontSize="11" Margin="0,2,0,0" />
+            <TextBlock Text="{Binding ProgressMessage}" Foreground="#1E3A8A" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+            <TextBlock Foreground="#64748B" FontSize="11" Margin="0,2,0,0">
+              <Run Text="{Binding CurrentStage}" />
+              <Run Text=" · " />
+              <Run Text="{Binding BatchProgressText}" />
+            </TextBlock>
+            <TextBlock Text="{Binding LastReportPath}" Foreground="#64748B" FontSize="10.5" Margin="0,2,0,0" TextTrimming="CharacterEllipsis" MaxWidth="780" />
           </StackPanel>
 
           <StackPanel Grid.Column="1" Margin="18,0" VerticalAlignment="Center">
@@ -373,18 +457,29 @@
                          Height="7" />
           </StackPanel>
 
-          <Button Grid.Column="2"
-                  Content="Мониторинг / логи"
-                  Click="OpenMonitor_Click"
-                  Background="#DBEAFE"
-                  Foreground="#1D4ED8"
-                  Margin="0,0,8,0" />
-
-          <Button Grid.Column="3"
-                  Content="Отмена"
-                  Command="{Binding CancelCommand}"
-                  Background="Transparent"
-                  Foreground="#1D4ED8" />
+          <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+            <Button Content="Мониторинг / логи"
+                    Click="OpenMonitor_Click"
+                    Background="#DBEAFE"
+                    Foreground="#1D4ED8"
+                    Margin="0,0,8,0" />
+            <Button Content="Пауза / продолжить"
+                    Command="{Binding PauseOrResumeBatchCommand}"
+                    IsEnabled="{Binding IsBatchRunning}"
+                    Background="#EEF2FF"
+                    Foreground="#3730A3"
+                    Margin="0,0,8,0" />
+            <Button Content="Пропустить регион"
+                    Command="{Binding SkipCurrentRegionCommand}"
+                    IsEnabled="{Binding IsBatchRunning}"
+                    Background="#FFF7ED"
+                    Foreground="#9A3412"
+                    Margin="0,0,8,0" />
+            <Button Content="Стоп"
+                    Command="{Binding CancelCommand}"
+                    Background="Transparent"
+                    Foreground="#1D4ED8" />
+          </StackPanel>
         </Grid>
       </Border>
     </Grid>

@@ -36,6 +36,8 @@ public partial class OrganizationRowViewModel : ObservableObject
     private string phones = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PreferredEmail))]
+    [NotifyPropertyChangedFor(nameof(EmailSource))]
     private string email = string.Empty;
 
     [ObservableProperty]
@@ -51,10 +53,27 @@ public partial class OrganizationRowViewModel : ObservableObject
     private string responsiblePhone = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PreferredEmail))]
+    [NotifyPropertyChangedFor(nameof(EmailSource))]
     private string responsibleEmail = string.Empty;
 
     [ObservableProperty]
     private string manager = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PreferredEmail))]
+    [NotifyPropertyChangedFor(nameof(EmailSource))]
+    private string managerEmail = string.Empty;
+
+    public string PreferredEmail => FirstNonEmpty(ManagerEmail, Email, ResponsibleEmail);
+
+    public string EmailSource => !string.IsNullOrWhiteSpace(ManagerEmail)
+        ? "Руководитель"
+        : !string.IsNullOrWhiteSpace(Email)
+            ? "Организация"
+            : !string.IsNullOrWhiteSpace(ResponsibleEmail)
+                ? "Ответственное лицо"
+                : "Не найден";
 
     [ObservableProperty]
     private string postalAddress = string.Empty;
@@ -86,11 +105,18 @@ public partial class OrganizationRowViewModel : ObservableObject
     [ObservableProperty]
     private string contactError = string.Empty;
 
+    [ObservableProperty]
+    private bool reportSucceeded;
+
+    [ObservableProperty]
+    private bool includeInReport = true;
+
     public void MarkQueued()
     {
         ContactStatus = HasDetailUrl ? "В очереди — прямой URL" : "В очереди — fallback";
         ContactError = string.Empty;
         DataWarnings = string.Empty;
+        ReportSucceeded = false;
     }
 
     public void Apply(DetailsProgress progress)
@@ -107,6 +133,7 @@ public partial class OrganizationRowViewModel : ObservableObject
             ResponsiblePhone = details.ResponsiblePhone;
             ResponsibleEmail = details.ResponsibleEmail;
             Manager = details.ManagerFullName;
+            ManagerEmail = details.ManagerEmail;
             PostalAddress = details.PostalAddress;
             LocationAddress = details.LocationAddress;
             OrganizationId = details.OrganizationId;
@@ -128,10 +155,16 @@ public partial class OrganizationRowViewModel : ObservableObject
                     : "Готово";
 
             ContactError = string.Empty;
+            ReportSucceeded = true;
             return;
         }
 
         ContactStatus = "Ошибка";
         ContactError = progress.Error ?? "Не удалось получить данные организации.";
+        ReportSucceeded = false;
     }
+
+
+    private static string FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
 }

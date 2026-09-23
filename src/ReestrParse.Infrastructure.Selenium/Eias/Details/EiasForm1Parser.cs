@@ -46,6 +46,12 @@ internal static partial class EiasForm1Parser
         if (phones.Length == 0)
             warnings.Add("В форме 1 не найден контактный телефон (код 9).");
 
+        var managerEmail = ExtractEmail(EiasFormTableReader.FirstByLabel(
+            values,
+            "адрес электронной почты руководителя",
+            "электронная почта руководителя",
+            "e-mail руководителя"));
+
         return new OrganizationContactDetails(
             OrganizationId: source.OrganizationId,
             Name: FirstOrFallback(
@@ -86,7 +92,8 @@ internal static partial class EiasForm1Parser
             DetailUrl: detailUrl,
             TemplateUrl: templateUrl,
             HasForm1: true,
-            Warnings: warnings);
+            Warnings: warnings,
+            ManagerEmail: managerEmail);
     }
 
     private static bool LooksLikePhone(string? value)

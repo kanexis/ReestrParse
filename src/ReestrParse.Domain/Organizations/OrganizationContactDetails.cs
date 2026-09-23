@@ -31,7 +31,8 @@ public sealed record OrganizationContactDetails(
     IReadOnlyList<string>? ServiceRegions = null,
     IReadOnlyList<string>? MunicipalDistricts = null,
     IReadOnlyList<string>? Municipalities = null,
-    IReadOnlyList<string>? Warnings = null)
+    IReadOnlyList<string>? Warnings = null,
+    string ManagerEmail = "")
 {
     public IReadOnlyList<string> Systems => InfrastructureSystems ?? [];
     public IReadOnlyList<string> Activities => RegulatedActivities ?? [];
@@ -40,9 +41,16 @@ public sealed record OrganizationContactDetails(
     public IReadOnlyList<string> MunicipalitiesList => Municipalities ?? [];
     public IReadOnlyList<string> DataWarnings => Warnings ?? [];
 
+
+    public string PreferredEmail =>
+        FirstNonEmpty(ManagerEmail, Email, ResponsibleEmail);
+
+    private static string FirstNonEmpty(params string?[] values)
+        => values.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x)) ?? string.Empty;
+
     public bool HasOrganizationContacts =>
         Phones.Count > 0 ||
-        !string.IsNullOrWhiteSpace(Email) ||
+        !string.IsNullOrWhiteSpace(PreferredEmail) ||
         !string.IsNullOrWhiteSpace(Website);
 
     public bool HasPrimaryContactForm => HasForm411 || HasForm1;

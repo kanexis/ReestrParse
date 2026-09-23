@@ -1005,3 +1005,10 @@ Details phase создаёт несколько независимых worker-з
 ## Card-open recovery (v0.9.3)
 
 Catalog row click is not treated as success by itself. A Worker verifies that the browser actually entered an organization card. If a DevExpress callback/click stalls, the Worker performs up to five complete attempts. Every attempt starts from the catalog URL, reapplies the same filters, waits for a stable grid, navigates to the target page, finds the row again, clicks it, and verifies card DOM/URL. Stale row elements are never reused across attempts.
+
+
+## DevExpress navigation circuit breaker (v0.9.4)
+
+Details Worker больше не зависит от наличия номера далёкой страницы в DOM pager. Сначала используется клиентский `ASPxGridView2.GotoPage(index)`. Если дальний callback не подтверждается, Worker проходит к цели последовательными client-side шагами. DOM click остаётся только последним fallback.
+
+Для защиты внешнего сайта и самого pipeline от retry storm введён общий `EiasCatalogBackoffGate`: три navigation failure в десятисекундном окне включают короткую общую паузу перед новыми catalog recovery. Уже запущенные callback-ошибки во время паузы не продлевают backoff бесконечно.

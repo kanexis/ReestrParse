@@ -95,6 +95,14 @@ internal static partial class EiasForm411Parser
         if (EiasFormTableReader.IsMeaningful(responsibleEmailRaw) && string.IsNullOrWhiteSpace(responsibleEmail))
             warnings.Add($"Код 3.4 содержит значение, не похожее на email: «{responsibleEmailRaw}».");
 
+        // У разных редакций формы email руководителя может не иметь стабильного кода.
+        // Поэтому берём его только по смысловой подписи и никогда не подменяем соседним полем.
+        var managerEmail = ExtractEmail(EiasFormTableReader.FirstByLabel(
+            values,
+            "адрес электронной почты руководителя",
+            "электронная почта руководителя",
+            "e-mail руководителя"));
+
         return new OrganizationContactDetails(
             OrganizationId: source.OrganizationId,
             Name: name,
@@ -133,7 +141,8 @@ internal static partial class EiasForm411Parser
             DetailUrl: detailUrl,
             TemplateUrl: templateUrl,
             HasForm411: true,
-            Warnings: warnings);
+            Warnings: warnings,
+            ManagerEmail: managerEmail);
     }
 
     private static bool LooksLikePhone(string? value)
